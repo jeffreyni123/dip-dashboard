@@ -183,6 +183,21 @@ label.check input { width: 18px; height: 18px; flex: none; }
 #tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--ground);
   font-size: 12px; line-height: 1.4; padding: 6px 9px; border-radius: 6px; white-space: nowrap; z-index: 3; }
 #tip b { font-family: var(--mono); }
+dialog { border: 1px solid var(--hair); border-radius: 14px; background: var(--surface); color: var(--ink);
+  padding: 0; width: min(460px, calc(100% - 24px)); max-height: calc(100% - 24px); }
+dialog::backdrop { background: rgba(0, 0, 0, .5); }
+dialog .in { padding: 18px; display: grid; gap: 14px; }
+dialog h3 { font-size: 18px; }
+.order { border: 1px solid var(--hair); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+.order.no { opacity: .7; }
+.order .line { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.order .big { font: 600 16px var(--sans); margin-right: auto; }
+.disclosure { font: 12px/1.45 var(--mono); color: var(--ink-2); background: var(--sunk); border-radius: 8px; padding: 8px 10px; }
+.spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--hair); border-top-color: var(--accent); display: inline-block; vertical-align: -3px; margin-right: 8px; }
+@media (prefers-reduced-motion: no-preference) { .spin { animation: spin 0.8s linear infinite; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+button.buy { background: var(--good); border-color: var(--good); color: var(--surface); font-weight: 600; }
+button.sell { background: var(--warn); border-color: var(--warn); color: var(--surface); font-weight: 600; }
 @media (prefers-reduced-motion: no-preference) { .progress > i { transition: width .3s ease; } }
 </style>
 </head>
@@ -223,12 +238,16 @@ label.check input { width: 18px; height: 18px; flex: none; }
         <label>Private repository <input id="cfgRepo" value="robinhood-bot" autocomplete="off" required></label>
       </div>
       <label>Access token <input id="cfgToken" type="password" autocomplete="off" placeholder="github_pat_..." required></label>
+      <label>Trading token, optional. Turns on the Buy and Sell buttons.
+        <input id="cfgTrade" type="password" autocomplete="off" placeholder="github_pat_... for the dip-trader repository"></label>
       <div class="row">
         <button class="primary" type="submit">Connect</button>
         <button type="button" id="disconnectBtn" class="danger">Forget this device</button>
       </div>
       <p class="sub muted">The token needs access to that one repository only, with Contents and Actions set to read and
-        write. Anyone with this browser profile can use it, so don't save it on a shared computer.</p>
+        write. The trading token is a second one, for the <b>dip-trader</b> repository only, with Actions set to read and
+        write and Contents set to read-only. It can start an order but cannot change the safety limits.
+        Anyone with this browser profile can use these, so don't save them on a shared computer.</p>
     </form>
   </section>
 
@@ -239,7 +258,10 @@ label.check input { width: 18px; height: 18px; flex: none; }
 
   <section id="p-positions" class="stack-lg" data-page hidden>
     <div class="sec-head"><h1>Positions</h1><span class="count" id="posCount">0</span></div>
+    <div id="acctLine" class="sub"></div>
     <div id="openBody" class="stack"></div>
+    <details id="manual"><summary>Log a trade by hand</summary><div class="in">
+    <p class="sub" id="manualNote"></p>
     <div class="two">
       <form id="buyForm" class="panel">
         <h3>Log a buy</h3>
@@ -264,6 +286,7 @@ label.check input { width: 18px; height: 18px; flex: none; }
         <button class="primary" type="submit">Log sell</button>
       </form>
     </div>
+    </div></details>
     <details>
       <summary>Account and trade size</summary>
       <form id="acctForm" class="in">
@@ -276,7 +299,6 @@ label.check input { width: 18px; height: 18px; flex: none; }
         <div class="row"><button type="submit">Save</button></div>
       </form>
     </details>
-    <p class="sub muted">Broker: not connected. You place orders in Robinhood and log them here.</p>
   </section>
 
   <section id="p-journal" class="stack-lg" data-page hidden>
@@ -290,6 +312,7 @@ label.check input { width: 18px; height: 18px; flex: none; }
   </section>
 </main>
 </div>
+<dialog id="tradeDlg" aria-labelledby="tradeTitle"><div class="in" id="tradeBody"></div></dialog>
 <div id="toast" hidden role="status"></div>
 
 <script>
@@ -314,7 +337,8 @@ const niceDay = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US"
 
 let cfg = {};
 try { cfg = JSON.parse(localStorage.getItem("dipdesk") || "{}"); } catch (e) { cfg = {}; }
-const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
+const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
+const canTrade = () => !!(cfg.tradeToken && !LOCAL);
 
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.hidden = false;
@@ -326,10 +350,10 @@ function toast(msg) {
 const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname) ? new URLSearchParams(location.search).get("local") : null;
 
 /* ---------------- GitHub API ---------------- */
-async function gh(path, opts = {}) {
-  const res = await fetch("https://api.github.com/repos/" + cfg.owner + "/" + cfg.repo + path, {
+async function gh(path, opts = {}, trader = false) {
+  const res = await fetch("https://api.github.com/repos/" + cfg.owner + "/" + (trader ? cfg.tradeRepo || "dip-trader" : cfg.repo) + path, {
     ...opts, cache: "no-store",
-    headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + cfg.token,
+    headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + (trader ? cfg.tradeToken : cfg.token),
                "X-GitHub-Api-Version": "2022-11-28", ...(opts.headers || {}) },
   });
   if (res.status === 401) throw new Error("GitHub rejected the token. Open Settings and paste a new one.");
@@ -379,19 +403,19 @@ async function loadAll() {
   if (!cfg.token && !LOCAL) { showConnect(true); return; }
   $("conn").textContent = "loading…";
   try {
-    const [screen, trades, signals, review, about, settings] = await Promise.all([
+    const [screen, trades, signals, review, about, settings, account] = await Promise.all([
       getJSON("data/screen_latest.json", null), getJSON("data/trades.json", []),
       getJSON("data/signals.json", []), getJSON("data/review.json", null),
-      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings)]);
+      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null)]);
     Object.assign(state, { screen: screen.data, trades: trades.data, tradesSha: trades.sha, signals: signals.data,
-      review: review.data, about: about.data, settings: settings.data, settingsSha: settings.sha });
+      review: review.data, about: about.data, account: account.data, settings: settings.data, settingsSha: settings.sha });
     $("conn").textContent = LOCAL ? "local preview" : "connected";
     showConnect(false); renderAll();
   } catch (e) { $("conn").textContent = "not connected"; toast(e.message); showConnect(true); }
 }
 function showConnect(on) {
   $("connect").hidden = !on;
-  $("cfgOwner").value = cfg.owner || ""; $("cfgRepo").value = cfg.repo || "robinhood-bot"; $("cfgToken").value = cfg.token || "";
+  $("cfgOwner").value = cfg.owner || ""; $("cfgRepo").value = cfg.repo || "robinhood-bot"; $("cfgToken").value = cfg.token || ""; $("cfgTrade").value = cfg.tradeToken || "";
 }
 function renderAll() { renderToday(); renderPositions(); renderJournal(); renderStrategy(); }
 
@@ -404,6 +428,82 @@ function meter(score, level, of = 6) {
 const stat = (k, v, c) => '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v ' + (c || "") + '">' + esc(v) + "</div></div>";
 const tile = (k, v, d) => '<div class="tile"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div><div class="d">' + esc(d) + "</div></div>";
 const rhLink = (sym, label) => '<a class="btn" target="_blank" rel="noopener" href="https://robinhood.com/stocks/' + encodeURIComponent(sym) + '">' + esc(label || "Open in Robinhood") + "</a>";
+
+function sellActs(sym, price, quiet) {
+  return canTrade()
+    ? '<button class="small ' + (quiet ? "" : "sell") + '" data-tsell="' + esc(sym) + '">Sell all ' + esc(sym) + "</button>" + rhLink(sym, "View in Robinhood")
+    : rhLink(sym) + '<button class="small" data-sell="' + esc(sym) + '" data-price="' + (price || "") + '">Log the sell</button>';
+}
+
+/* ---------------- trading: review with Robinhood, confirm, place ---------------- */
+const confOf = (sym) => {
+  const b = ((state.screen && state.screen.buys) || []).find((x) => x.sym === sym);
+  if (b && b.confidence != null) return { score: b.confidence, level: b.confidence_level };
+  const t = state.trades.filter((x) => x.sym === sym && !x.exit_date).pop();
+  return t && t.confidence != null ? { score: t.confidence, level: t.confidence >= 3 ? "high" : t.confidence === 2 ? "medium" : "low" } : null;
+};
+async function waitFor(batch, done, onTick) {
+  const t0 = Date.now();
+  for (let i = 0; i < 80; i++) {
+    await new Promise((r) => setTimeout(r, i < 4 ? 4000 : 2500));
+    onTick(Math.round((Date.now() - t0) / 1000));
+    const res = await gh("/contents/orders/" + batch + ".json?t=" + Date.now(), {}, true);
+    if (res.status === 404) continue;
+    if (!res.ok) throw new Error("Could not read the result (" + res.status + ").");
+    const doc = JSON.parse(b64decode((await res.json()).content));
+    if (done(doc)) return doc;
+  }
+  throw new Error("No answer after several minutes. Check Robinhood before trying again.");
+}
+async function dispatchTrade(inputs) {
+  const res = await gh("/actions/workflows/trade.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: "main", inputs }) }, true);
+  if (!res.ok) throw new Error("Could not reach the trader (" + res.status + "). Check the trading token in Settings.");
+}
+function orderCard(o, placed) {
+  const c = confOf(o.symbol), buy = o.side === "buy";
+  const head = '<div class="line"><span class="big">' + (buy ? "Buy " : "Sell ") + esc(o.symbol) + "</span>" + (c ? meter(c.score, c.level) : "") + "</div>";
+  if (!o.ok) return '<div class="order no">' + head + '<div class="note bad">Not allowed: ' + esc(o.reason || "refused") + "</div></div>";
+  if (placed) {
+    const filled = o.state === "filled" && o.avg_price;
+    return '<div class="order">' + head + (filled
+      ? '<div class="note good"><b>Filled at ' + usd(o.avg_price, 4).replace(/0{1,2}$/, "") + ".</b> " + (+o.filled_qty).toFixed(6).replace(/0+$/, "") + " shares, " + usd(o.avg_price * o.filled_qty) + " total."
+        + (c ? " Confidence " + c.score + "/6." : "") + "</div>"
+      : '<div class="note ' + (o.reason ? "bad" : "warn") + '">' + esc(o.reason || "Sent to Robinhood, status: " + (o.state || "unknown") + ". It will be logged once it fills.") + "</div>") + "</div>";
+  }
+  return '<div class="order">' + head + '<div class="stats">' + (buy ? stat("Amount", usd(o.dollars)) + stat("About", o.est_shares + " sh") : stat("Shares", o.quantity) + stat("About", usd(o.est_dollars)))
+    + stat("Last", usd(o.last)) + stat("Bid / ask", o.bid.toFixed(2) + " / " + o.ask.toFixed(2)) + "</div>"
+    + (o.disclosure ? '<div class="disclosure">' + esc(o.disclosure) + "</div>" : "") + "</div>";
+}
+async function startTrade(orders) {
+  const dlg = $("tradeDlg"), body = $("tradeBody"), batch = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  const title = orders.map((o) => (o.side === "buy" ? "Buy " : "Sell ") + o.symbol).join(", ");
+  const busy = (msg) => { body.innerHTML = '<h3 id="tradeTitle">' + esc(title) + '</h3><p><span class="spin"></span><span id="tradeMsg">' + esc(msg) + "</span></p>"; };
+  const finish = (html, reload) => { body.innerHTML = html + '<div class="row"><button class="spacer" id="tradeClose">Close</button></div>';
+    $("tradeClose").addEventListener("click", () => { dlg.close(); if (reload) loadAll(); }); };
+  busy("Asking Robinhood for a live quote…"); dlg.showModal();
+  try {
+    await dispatchTrade({ step: "review", batch, orders: JSON.stringify(orders) });
+    const doc = await waitFor(batch, () => true, (s) => { $("tradeMsg").textContent = "Asking Robinhood for a live quote… " + s + "s"; });
+    const good = doc.orders.filter((o) => o.ok);
+    if (doc.state !== "reviewed" || !good.length || !doc.market_open) {
+      finish('<h3 id="tradeTitle">Nothing to place</h3>' + (doc.message ? '<div class="note warn">' + esc(doc.message) + "</div>" : "") + doc.orders.map((o) => orderCard(o)).join("")); return;
+    }
+    body.innerHTML = '<h3 id="tradeTitle">Confirm with real money</h3>' + doc.orders.map((o) => orderCard(o)).join("")
+      + '<p class="sub">Market order in your Agentic account, buying power ' + usd(doc.buying_power) + ". The fill price can differ slightly from the last price.</p>"
+      + '<div class="row"><button id="tradeCancel">Cancel</button><button class="primary spacer" id="tradeGo">Place ' + plural(good.length, "order") + "</button></div>";
+    $("tradeCancel").addEventListener("click", () => dlg.close());
+    $("tradeGo").addEventListener("click", async () => {
+      busy("Placing with Robinhood…");
+      try {
+        await dispatchTrade({ step: "place", batch });
+        const out = await waitFor(batch, (d) => d.state !== "reviewed", (s) => { $("tradeMsg").textContent = "Placing with Robinhood and waiting for the fill… " + s + "s"; });
+        finish('<h3 id="tradeTitle">' + (out.state === "placed" ? "Done" : "Not placed") + "</h3>" + (out.state !== "placed" && out.message ? '<div class="note bad">' + esc(out.message) + "</div>" : "")
+          + (out.state === "placed" ? out.orders.map((o) => orderCard(o, true)).join("") + '<p class="sub">Filled orders are written to your journal automatically, with the confidence score.</p>' : ""), true);
+      } catch (e) { finish('<h3 id="tradeTitle">Something went wrong</h3><div class="note bad">' + esc(e.message) + " Open Robinhood to see whether the order went through before trying again.</div>", true); }
+    });
+  } catch (e) { finish('<h3 id="tradeTitle">Could not review</h3><div class="note bad">' + esc(e.message) + "</div>"); }
+}
+$("tradeDlg").addEventListener("cancel", (ev) => { if ($("tradeMsg")) ev.preventDefault(); });   // no Esc while an order is in flight
 
 /* ---------------- today ---------------- */
 function situation() {
@@ -458,7 +558,7 @@ function renderToday() {
   const sells = r.sells.length
     ? r.sells.map((s) => '<div class="card"><div class="top"><div class="name"><span class="sym">' + esc(s.sym) + '</span></div><span class="pill warn">Sell</span></div>'
       + '<div class="why">' + esc(s.reason.charAt(0).toUpperCase() + s.reason.slice(1)) + ". Last price " + usd(s.price) + ".</div>"
-      + '<div class="acts">' + rhLink(s.sym) + '<button class="small" data-sell="' + esc(s.sym) + '" data-price="' + s.price + '">Log the sell</button></div></div>').join("")
+      + '<div class="acts">' + sellActs(s.sym, s.price) + "</div></div>").join("")
     : '<p class="sub">Nothing to sell.</p>';
   const holding = r.holding.length ? '<p class="sub">Still holding ' + r.holding.map((h) => '<span class="sym">' + esc(h.sym) + "</span> (day " + h.day + " of 5)").join(", ") + ".</p>" : "";
   const unknown = r.unknown_holdings.length ? '<div class="note warn">Not covered by the screen, check by hand: ' + esc(r.unknown_holdings.join(", ")) + "</div>" : "";
@@ -484,7 +584,7 @@ function renderToday() {
     + "<dt>Oversold</dt><dd>RSI(2), a 0 to 100 gauge of short-term selling. Under 10 is very oversold.</dd>"
     + "<dt>Daily range</dt><dd>How much the stock normally moves in a day. Bigger movers bounce enough to be worth trading.</dd>"
     + "<dt>Plan</dt><dd>The dollar amount the strategy assigns to each pick.</dd></dl>"
-    + '<p class="sub muted">Data run ' + esc(r.run_at) + " across " + r.symbols + " symbols. This page is information. It never places orders.</p></div></details>";
+    + '<p class="sub muted">Data run ' + esc(r.run_at) + " across " + r.symbols + " symbols. Orders are only ever placed when you press Buy or Sell and then confirm.</p></div></details>";
   try { $("boardSort").value = localStorage.getItem("dipdesk-sort") || "confidence"; $("boardHigh").checked = localStorage.getItem("dipdesk-high") === "1"; } catch (e) { /* ignore */ }
   $("boardSort").addEventListener("change", renderBoard); $("boardHigh").addEventListener("change", renderBoard);
   renderBoard();
@@ -495,6 +595,7 @@ function renderBoard() {
   const sort = $("boardSort").value, highOnly = $("boardHigh").checked && r.buys.length > 1, fresh = r.as_of === nyDate();
   try { localStorage.setItem("dipdesk-sort", sort); localStorage.setItem("dipdesk-high", $("boardHigh").checked ? "1" : "0"); } catch (e) { /* ignore */ }
   const dollars = state.settings.default_dollars || (r.buys[0] && r.buys[0].dollars);
+  const held = Object.fromEntries(state.trades.filter((t) => !t.exit_date).map((t) => [t.sym, 1]));
   let items = r.buys.map((b) => ({ ...b, conf: b.confidence ?? 0, level: b.confidence_level || "low" }));
   if (highOnly) items = items.filter((b) => b.level === "high");
   items.sort(sort === "confidence" ? (a, b) => b.conf - a.conf || a.rank - b.rank : sort === "drop" ? (a, b) => a.ret_5d - b.ret_5d : (a, b) => a.rank - b.rank);
@@ -508,7 +609,9 @@ function renderBoard() {
     + stat("Oversold", b.rsi2.toFixed(1) + " / 100") + stat("Daily range", (b.atr_pct * 100).toFixed(1) + "%") + stat("Plan", usd(dollars || b.dollars, 0)) + "</div>"
     + '<div class="why">' + ((b.confidence_reasons || []).length ? "<b>Why it scores:</b> " + esc(b.confidence_reasons.join("; ")) + "."
       : (b.confidence == null ? "" : "None of the six confidence checks is met. Picks like this had almost no edge in testing.")) + "</div>"
-    + '<div class="acts">' + rhLink(b.sym) + '<button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log the buy</button></div></div>').join("");
+    + '<div class="acts">' + (canTrade() && fresh
+        ? '<button class="small buy" data-tbuy="' + esc(b.sym) + '" data-dollars="' + (dollars || b.dollars) + '"' + (held[b.sym] ? " disabled" : "") + ">" + (held[b.sym] ? "Already bought" : "Buy " + usd(dollars || b.dollars, 0)) + "</button>" + rhLink(b.sym, "View in Robinhood")
+        : rhLink(b.sym) + '<button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log the buy</button>') + "</div></div>").join("");
 }
 
 function spreadSection(sp) {
@@ -565,14 +668,31 @@ function renderPositions() {
       + stat("Gain", gain == null ? "–" : pct(gain, 2), cls(gain)) + stat("Amount", usd(t.dollars, 0)) + stat("Confidence", t.confidence == null ? "–" : t.confidence + " / 6") + "</div>"
       + (day ? '<div class="stack" style="gap:4px"><div class="progress' + (s ? " due" : "") + '"><i style="width:' + Math.min(100, day * 20) + '%"></i></div><div class="why">'
         + (s ? esc(s.reason.charAt(0).toUpperCase() + s.reason.slice(1)) + "." : "Day " + day + " of 5. It sells when it bounces (RSI above 70, now " + Math.round(h.rsi2) + ") or on day 5.") + "</div></div>" : "")
-      + '<div class="acts">' + rhLink(t.sym) + '<button class="small" data-sell="' + esc(t.sym) + '" data-price="' + (last || "") + '">Log the sell</button>'
+      + '<div class="acts">' + sellActs(t.sym, last, !s)
       + '<button class="small ghost danger" data-del="' + esc(t.id) + '" style="flex:0 0 auto">Delete</button></div></div>';
   }).join("") : '<p class="sub">No open positions. When you buy something from the Today page, log it and it shows up here with its exit countdown.</p>';
+  const a = state.account;
+  $("acctLine").innerHTML = a ? "Robinhood " + esc(a.account) + ": cash <b>" + usd(a.cash) + "</b>, buying power <b>" + usd(a.buying_power) + "</b>"
+    + (a.positions.length ? ", holding " + a.positions.map((x) => esc(x.sym)).join(", ") : "") + '. <span class="muted">Checked ' + esc(a.as_of) + ".</span>"
+    + (canTrade() ? ' <button class="small ghost" id="syncNow">Sync now</button>' : "")
+    : "Robinhood is not connected yet. You place orders in the app and log them here.";
+  if ($("syncNow")) $("syncNow").addEventListener("click", syncNow);
+  $("manual").open = !a;
+  $("manualNote").textContent = a ? "You normally don't need this. Filled stock orders in your Agentic account are logged automatically within about half an hour, or within a minute when placed from here."
+    : "Log each buy and sell after you place it in Robinhood.";
   $("sellSym").innerHTML = open.length ? open.map((t) => '<option value="' + esc(t.sym) + '">' + esc(t.sym) + " · " + esc(niceDay(t.entry_date).split(", ").pop()) + "</option>").join("") : '<option value="">No open positions</option>';
   if (!$("buyDate").value) $("buyDate").value = nyDate();
   if (!$("sellDate").value) $("sellDate").value = nyDate();
   if (!$("buyDollars").value) $("buyDollars").value = state.settings.default_dollars || 67;
   $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? "";
+}
+async function syncNow() {
+  const b = $("syncNow"); b.disabled = true; b.textContent = "Syncing…";
+  try {
+    const res = await gh("/actions/workflows/sync.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: "main" }) }, true);
+    if (!res.ok) throw new Error("Could not start the sync (" + res.status + ").");
+    await new Promise((r) => setTimeout(r, 45000)); await loadAll(); toast("Synced with Robinhood.");
+  } catch (e) { toast(e.message); renderPositions(); }
 }
 async function submitBuy(ev) {
   ev.preventDefault();
@@ -708,7 +828,7 @@ document.querySelectorAll("button.tab").forEach((b) => b.addEventListener("click
 $("settingsBtn").addEventListener("click", () => { showConnect($("connect").hidden); window.scrollTo(0, 0); });
 $("refreshBtn").addEventListener("click", () => loadAll().then(() => toast("Reloaded.")));
 $("connectForm").addEventListener("submit", (ev) => { ev.preventDefault();
-  cfg = { owner: $("cfgOwner").value.trim(), repo: $("cfgRepo").value.trim(), token: $("cfgToken").value.trim() };
+  cfg = { owner: $("cfgOwner").value.trim(), repo: $("cfgRepo").value.trim(), token: $("cfgToken").value.trim(), tradeToken: $("cfgTrade").value.trim(), tradeRepo: "dip-trader" };
   try { localStorage.setItem("dipdesk", JSON.stringify(cfg)); } catch (e) { toast("This browser will not remember the token."); }
   loadAll(); });
 $("disconnectBtn").addEventListener("click", () => { cfg = {}; try { localStorage.removeItem("dipdesk"); } catch (e) { /* ignore */ } $("conn").textContent = "not connected"; showConnect(true); toast("Token removed from this device."); });
@@ -720,6 +840,9 @@ $("acctForm").addEventListener("submit", async (ev) => { ev.preventDefault();
   catch (e) { toast(e.message); } });
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.tbuy) startTrade([{ side: "buy", symbol: b.dataset.tbuy, dollars: +b.dataset.dollars }]);
+  if (b.dataset.tsell) startTrade([{ side: "sell", symbol: b.dataset.tsell }]);
+  if (b.dataset.buy || b.dataset.sell) $("manual").open = true;
   if (b.dataset.buy) { showTab("positions"); $("buySym").value = b.dataset.buy; $("buyPrice").value = b.dataset.price; $("buyDollars").value = b.dataset.dollars; $("buyDate").value = nyDate(); $("buyForm").scrollIntoView({ block: "center" }); $("buyPrice").focus(); }
   if (b.dataset.sell) { showTab("positions"); $("sellSym").value = b.dataset.sell; $("sellPrice").value = b.dataset.price; $("sellDate").value = nyDate(); $("sellForm").scrollIntoView({ block: "center" }); $("sellPrice").focus(); }
   if (b.dataset.del && confirm("Delete this trade from the journal?")) save(() => updateTrades((ts) => ts.filter((t) => t.id !== b.dataset.del), "delete " + b.dataset.del), "Deleted.");
