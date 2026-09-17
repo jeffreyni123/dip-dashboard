@@ -104,6 +104,31 @@ ul.rules { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 68
 dl { display: grid; grid-template-columns: minmax(110px, max-content) 1fr; gap: 8px 16px; margin: 0; }
 dt { color: var(--muted); font-size: 13px; } dd { margin: 0; }
 .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+/* Trade board: one card per opportunity */
+.board-tools { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.board-tools select { width: auto; padding: 5px 8px; font-size: 13px; }
+.opp { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--hair); align-items: start; }
+.opp:last-child { border-bottom: 0; padding-bottom: 0; }
+.opp .head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.opp .metrics { font: 13px var(--mono); color: var(--ink-2); }
+.opp .why { font-size: 13px; color: var(--muted); }
+.opp .btns { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.opp .btns a { text-decoration: none; text-align: center; }
+@media (max-width: 560px) {
+  .opp { grid-template-columns: 1fr; }
+  .opp .btns { flex-direction: row; } .opp .btns > * { flex: 1; }
+}
+a.btn { font: 500 13px var(--sans); color: var(--ink); border: 1px solid var(--hair); border-radius: 6px; padding: 4px 10px; display: inline-block; }
+a.btn:hover { border-color: var(--axis); }
+.conf { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--sans); padding: 3px 9px; border-radius: 99px; }
+.conf.high { background: var(--good-bg); color: var(--good); }
+.conf.medium { background: var(--warn-bg); color: var(--warn); }
+.conf.low { background: var(--ground); color: var(--muted); border: 1px solid var(--hair); }
+.dots { letter-spacing: 1px; font-family: var(--mono); }
+ul.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+ul.checks li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
+ul.checks .mark { font-family: var(--mono); font-weight: 600; }
+ul.checks .yes .mark { color: var(--good); } ul.checks .no { color: var(--muted); }
 #toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%); background: var(--ink); color: var(--ground); padding: 9px 16px;
   border-radius: 6px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); }
@@ -344,15 +369,6 @@ function renderScreener() {
     ? '<p class="sub">Still holding: ' + r.holding.map((h) => '<span class="sym">' + esc(h.sym) + "</span> (day " + h.day + " of 5, RSI " + Math.round(h.rsi2) + ")").join(", ") + "</p>" : "";
   const unknown = r.unknown_holdings.length ? '<div class="note warn">Not in the screen\'s data, check by hand: ' + esc(r.unknown_holdings.join(", ")) + "</div>" : "";
 
-  const dollars = state.settings.default_dollars || (r.buys[0] && r.buys[0].dollars);
-  const buys = r.buys.length
-    ? '<div class="scroll"><table><thead><tr><th>#</th><th>Symbol</th><th>Sector</th><th class="num">Price</th><th class="num">5-day</th><th class="num">Gap</th><th class="num">RSI(2)</th><th class="num">ATR</th><th class="num">Plan $</th><th></th></tr></thead><tbody>'
-      + r.buys.map((b) => "<tr><td>" + b.rank + '</td><td class="sym">' + esc(b.sym) + "</td><td>" + esc(b.sector || "") + '</td><td class="num">' + usd(b.price)
-        + '</td><td class="num">' + pct(b.ret_5d) + '</td><td class="num">' + pct(b.gap) + '</td><td class="num">' + b.rsi2.toFixed(1)
-        + '</td><td class="num">' + (b.atr_pct * 100).toFixed(1) + '%</td><td class="num">' + usd(b.dollars, 0)
-        + '</td><td class="act"><button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log buy</button></td></tr>').join("")
-      + "</tbody></table></div>"
-    : '<p class="sub">Nothing qualifies today. That is common, and the right move is no trade.</p>';
   const extra = (r.next_in_line.length ? '<p class="sub">Next in line (no room): ' + esc(r.next_in_line.join(", ")) + "</p>" : "")
     + (r.skipped_earnings.length ? '<p class="sub">Skipped, just reported earnings: ' + esc(r.skipped_earnings.join(", ")) + "</p>" : "");
 
@@ -361,10 +377,53 @@ function renderScreener() {
     + '<span class="pill">SPY ' + r.spy.toLocaleString() + " · " + pct(r.spy_vs_ema) + " vs 200-day EMA</span>"
     + '<span class="pill">VIX ' + r.vix + " · fear at " + r.fear_level + "+</span></div><p class='sub'>" + esc(r.regime_note) + "</p></div>"
     + '<div class="panel stack"><h2>Sell at tomorrow\'s open</h2>' + sells + holding + unknown + "</div>"
-    + '<div class="panel stack"><h2>Buy before the close · ' + r.n_qualify + " qualify · room for " + r.room + "</h2>" + buys + extra + "</div>"
+    + '<div class="panel stack"><div class="row"><h2 style="margin:0 auto 0 0">Trade board · ' + r.n_qualify + " qualify · room for " + r.room + "</h2>"
+    + '<div class="board-tools"><label class="check" style="font-size:13px"><input type="checkbox" id="boardHigh"> High confidence only</label>'
+    + '<label style="display:flex;gap:6px;align-items:center;font-size:13px">Sort <select id="boardSort"><option value="confidence">Confidence</option><option value="rank">Strategy rank</option><option value="drop">Biggest 5-day drop</option></select></label></div></div>'
+    + '<div id="board"></div>' + extra + "</div>"
+    + spreadPanel(r.spread)
     + '<div class="panel stack"><h2>S&amp;P 500 core</h2><p>Keep about <b>' + usd(r.core_dollars, 0) + "</b> in " + esc(r.core_symbol || "cash") + ". "
     + r.n_swing + " swing position" + (r.n_swing === 1 ? "" : "s") + " use about " + usd(r.swing_dollars, 0) + ' of a ' + usd(r.account, 0) + " account.</p></div>"
     + '<p class="sub muted">Run ' + esc(r.run_at) + " · " + r.symbols + " symbols · This list is information, not an order.</p>";
+  try { $("boardSort").value = localStorage.getItem("dipdesk-sort") || "confidence"; $("boardHigh").checked = localStorage.getItem("dipdesk-high") === "1"; } catch (e) { /* ignore */ }
+  $("boardSort").addEventListener("change", renderBoard); $("boardHigh").addEventListener("change", renderBoard);
+  renderBoard();
+}
+
+const confPill = (score, level, of) => '<span class="conf ' + esc(level) + '" title="confidence score">'
+  + '<span class="dots">' + "●".repeat(score) + "○".repeat(Math.max(0, of - score)) + "</span>" + score + "/" + of + " · " + esc(level) + "</span>";
+
+function renderBoard() {
+  const r = state.screen, el = $("board"); if (!r || !el) return;
+  const sort = $("boardSort").value, highOnly = $("boardHigh").checked;
+  try { localStorage.setItem("dipdesk-sort", sort); localStorage.setItem("dipdesk-high", highOnly ? "1" : "0"); } catch (e) { /* ignore */ }
+  const dollars = state.settings.default_dollars || (r.buys[0] && r.buys[0].dollars);
+  let items = r.buys.map((b) => ({ ...b, conf: b.confidence ?? 0, level: b.confidence_level || "low" }));
+  if (highOnly) items = items.filter((b) => b.level === "high");
+  items.sort(sort === "confidence" ? (a, b) => b.conf - a.conf || a.rank - b.rank : sort === "drop" ? (a, b) => a.ret_5d - b.ret_5d : (a, b) => a.rank - b.rank);
+  if (!items.length) {
+    el.innerHTML = '<p class="sub">' + (r.buys.length ? "No high-confidence picks today. Untick the filter to see the " + r.buys.length + " lower-confidence one" + (r.buys.length === 1 ? "" : "s") + "."
+      : "Nothing qualifies today. That is common, and the right move is no trade.") + "</p>"; return;
+  }
+  el.innerHTML = items.map((b) => '<div class="opp"><div class="stack" style="gap:4px"><div class="head"><span class="sym" style="font-size:16px">' + esc(b.sym) + "</span>"
+    + (b.confidence == null ? "" : confPill(b.conf, b.level, 6)) + '<span class="muted" style="font-size:13px">#' + b.rank + " · " + esc(b.sector || "") + "</span></div>"
+    + '<div class="metrics">' + usd(b.price) + " · 5d " + pct(b.ret_5d) + " · gap " + pct(b.gap) + " · RSI " + b.rsi2.toFixed(1) + " · ATR " + (b.atr_pct * 100).toFixed(1) + "% · plan " + usd(b.dollars, 0) + "</div>"
+    + '<div class="why">' + ((b.confidence_reasons || []).length ? "Why: " + esc(b.confidence_reasons.join("; ")) : (b.confidence == null ? "" : "No confidence factors met. Picks like this had almost no edge in testing.")) + "</div></div>"
+    + '<div class="btns"><a class="btn" target="_blank" rel="noopener" href="https://robinhood.com/stocks/' + encodeURIComponent(b.sym) + '">Open in Robinhood</a>'
+    + '<button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log buy</button></div></div>').join("");
+}
+
+function spreadPanel(sp) {
+  if (!sp) return "";
+  const checks = '<ul class="checks">' + sp.factors.map((f) => '<li class="' + (f.met ? "yes" : "no") + '"><span class="mark">' + (f.met ? "✓" : "–") + "</span><span>" + esc(f.label)
+    + ' <span class="muted">(' + esc(f.detail) + ")</span></span></li>").join("") + "</ul>";
+  const trade = sp.signal
+    ? '<div class="note good"><b>Signal.</b> Sell the ' + sp.short_strike + " put and buy the " + sp.long_strike + " put, expiring " + esc(sp.expiry) + " (" + sp.days + " days), one contract. Max loss about $"
+      + sp.max_loss + ". Skip it if the credit is under $" + sp.min_credit.toFixed(2) + ' a share. Keep about $100 cash free as collateral.</div>'
+      + '<div class="row"><a class="btn" target="_blank" rel="noopener" href="https://robinhood.com/options/chains/' + esc(sp.symbol) + '">Open ' + esc(sp.symbol) + " options in Robinhood</a></div>"
+    : '<p class="sub">No trade. It needs ' + sp.min_score + " or more; this spread only had an edge when fear was elevated. If it fired today it would be the " + sp.short_strike + " / " + sp.long_strike + " put spread expiring " + esc(sp.expiry) + ".</p>";
+  return '<div class="panel stack"><div class="row"><h2 style="margin:0 auto 0 0">' + esc(sp.symbol) + " put credit spread</h2>" + confPill(sp.score, sp.signal ? "high" : sp.score === sp.min_score - 1 ? "medium" : "low", 6) + "</div>"
+    + checks + trade + '<p class="sub muted">' + esc(sp.note) + "</p></div>";
 }
 
 async function runNow() {
@@ -415,7 +474,7 @@ async function submitBuy(ev) {
   const sig = state.signals.filter((s) => s.sym === sym && String(s.date) === day).pop() || {};
   const trade = { id: sym + "-" + day, sym, entry_date: day, entry_price: +$("buyPrice").value, dollars: +$("buyDollars").value,
     exit_date: null, exit_price: null, paper: $("buyPaper").checked, note: $("buyNote").value.trim(),
-    regime: sig.regime ?? null, rank: sig.rank ?? null, rsi2: sig.rsi2 ?? null, ret_5d: sig.ret_5d ?? null, gap: sig.gap ?? null, atr_pct: sig.atr_pct ?? null, sector: sig.sector ?? null };
+    regime: sig.regime ?? null, confidence: sig.confidence ?? null, rank: sig.rank ?? null, rsi2: sig.rsi2 ?? null, ret_5d: sig.ret_5d ?? null, gap: sig.gap ?? null, atr_pct: sig.atr_pct ?? null, sector: sig.sector ?? null };
   await save(() => updateTrades((ts) => ts.concat([trade]), "buy " + sym), "Logged buy " + sym + (sig.rank ? "" : " (no screener signal that day: off-system)"));
   $("buySym").value = ""; $("buyPrice").value = ""; $("buyNote").value = "";
 }
@@ -459,8 +518,11 @@ function renderJournal() {
       ? '<div class="scroll"><table><thead><tr><th>Regime</th><th class="num">Trades</th><th class="num">Win</th><th class="num">Avg</th></tr></thead><tbody>'
         + r.by_regime.map((b) => "<tr><td>" + esc(b.regime) + '<div class="sub muted">backtest: ' + esc(b.expected) + '</div></td><td class="num">' + b.n + '</td><td class="num">' + pct0(b.win) + '</td><td class="num ' + cls(b.avg) + '">' + pct(b.avg, 2) + "</td></tr>").join("") + "</tbody></table></div>"
       : '<p class="sub">No on-system trades yet.</p>') + "</div></div>"
-    + '<div class="panel stack"><h2>Closed trades</h2><div class="scroll"><table><thead><tr><th>Symbol</th><th>In</th><th>Out</th><th class="num">Return</th><th class="num">P&amp;L</th><th class="num">Market</th><th>Exit</th><th>Note</th></tr></thead><tbody>'
-    + r.closed.slice().reverse().map((t) => '<tr><td class="sym">' + esc(t.sym) + (t.paper ? ' <span class="pill">paper</span>' : "") + "</td><td>" + esc(t.entry_date) + "</td><td>" + esc(t.exit_date)
+    + ((r.by_confidence || []).length ? '<div class="panel stack"><h2>By confidence score at entry</h2><div class="scroll"><table><thead><tr><th>Score</th><th class="num">Trades</th><th class="num">Win</th><th class="num">Avg</th><th class="num">P&amp;L</th></tr></thead><tbody>'
+      + r.by_confidence.map((b) => "<tr><td>" + esc(b.label) + '</td><td class="num">' + b.n + '</td><td class="num">' + pct0(b.win) + '</td><td class="num ' + cls(b.avg) + '">' + pct(b.avg, 2) + '</td><td class="num ' + cls(b.pnl) + '">' + signed(b.pnl) + "</td></tr>").join("")
+      + '</tbody></table></div><p class="sub">In testing, scores of 3 or more carried nearly all of the edge. This shows whether that holds for your own trades.</p></div>' : "")
+    + '<div class="panel stack"><h2>Closed trades</h2><div class="scroll"><table><thead><tr><th>Symbol</th><th class="num">Conf</th><th>In</th><th>Out</th><th class="num">Return</th><th class="num">P&amp;L</th><th class="num">Market</th><th>Exit</th><th>Note</th></tr></thead><tbody>'
+    + r.closed.slice().reverse().map((t) => '<tr><td class="sym">' + esc(t.sym) + (t.paper ? ' <span class="pill">paper</span>' : "") + '</td><td class="num">' + (t.confidence == null ? "–" : t.confidence + "/6") + "</td><td>" + esc(t.entry_date) + "</td><td>" + esc(t.exit_date)
       + '</td><td class="num ' + cls(t.ret) + '">' + pct(t.ret, 2) + '</td><td class="num ' + cls(t.pnl) + '">' + signed(t.pnl) + '</td><td class="num">' + pct(t.mkt) + "</td><td>" + esc(t.exit_type) + '</td><td style="white-space:normal;min-width:140px">' + esc(t.note || "") + "</td></tr>").join("")
     + "</tbody></table></div></div>"
     + '<p class="sub muted">Change a rule only when this review flags a real difference on 50 or more trades, and the fix also holds up on the historical data.</p>';
@@ -516,6 +578,8 @@ function renderAbout() {
     '<p>Every trading day, screen the S&amp;P 500 for volatile, liquid stocks that just dropped sharply. Buy the most stretched ones at the close, and sell into the bounce within a week. Long only, no margin.</p>'
     + '<div class="two"><div class="panel stack"><h2>A stock qualifies when</h2>' + li(a.screen) + '</div>'
     + '<div class="panel stack"><h2>The trade</h2><dl><dt>Rank</dt><dd>' + esc(a.rank) + "</dd><dt>Buy</dt><dd>" + esc(a.buy) + "</dd><dt>Sell</dt><dd>" + esc(a.sell) + "</dd><dt>Idle cash</dt><dd>" + esc(a.core) + "</dd></dl></div></div>"
+    + (a.confidence ? '<div class="panel stack"><h2>Confidence score</h2><p>' + esc(a.confidence.what) + "</p><p>" + esc(a.confidence.meaning) + "</p></div>" : "")
+    + (a.spread ? '<div class="panel stack"><h2>SPY spread side strategy</h2><dl><dt>Trade</dt><dd>' + esc(a.spread.trade) + "</dd><dt>When</dt><dd>" + esc(a.spread.when) + "</dd><dt>Expect</dt><dd>" + esc(a.spread.expect) + "</dd><dt>Cash</dt><dd>" + esc(a.spread.cash) + "</dd></dl></div>" : "")
     + '<div class="panel stack"><h2>What the backtests say to expect</h2><dl>' + Object.entries({ yearly: "Per year", edge: "Edge", win_rate: "Win rate", trade: "Per trade", month: "Per month", drawdown: "Worst drops", trades: "Activity" })
       .map(([k, label]) => "<dt>" + label + "</dt><dd>" + esc(a.expect[k]) + "</dd>").join("") + "</dl></div>"
     + '<div class="panel stack"><h2>Market regimes</h2><dl>' + Object.entries(a.regimes).map(([k, v]) => "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>").join("") + "</dl></div>"
