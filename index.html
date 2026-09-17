@@ -149,6 +149,12 @@ details > summary::-webkit-details-marker { display: none; }
 details > summary::before { content: "+"; font: 600 16px var(--mono); color: var(--muted); width: 14px; }
 details[open] > summary::before { content: "–"; }
 details > .in { padding: 0 16px 16px; display: grid; gap: 12px; }
+details.news { border: 0; background: var(--sunk); border-radius: 8px; }
+details.news > summary { padding: 8px 12px; font-size: 13px; font-weight: 500; }
+details.news > .in { padding: 0 12px 10px; }
+details.news li { font-size: 13px; }
+details.news a { color: var(--accent); text-decoration: none; }
+details.news a:hover { text-decoration: underline; }
 dl { display: grid; grid-template-columns: minmax(96px, max-content) 1fr; gap: 8px 16px; margin: 0; font-size: 14px; }
 dt { color: var(--muted); font-size: 13px; } dd { margin: 0; }
 ul.rules { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 68ch; font-size: 14px; }
@@ -431,6 +437,17 @@ const stat = (k, v, c) => '<div class="stat"><div class="k">' + esc(k) + '</div>
 const tile = (k, v, d) => '<div class="tile"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div><div class="d">' + esc(d) + "</div></div>";
 const rhLink = (sym, label) => '<a class="btn" target="_blank" rel="noopener" href="https://robinhood.com/stocks/' + encodeURIComponent(sym) + '">' + esc(label || "Open in Robinhood") + "</a>";
 
+function newsBlock(n) {
+  if (!n) return "";
+  const soon = n.earnings_in != null && n.earnings_in <= 5, heads = n.headlines || [];
+  const e = n.next_earnings ? "next earnings " + niceDay(n.next_earnings) : "";
+  const items = heads.map((h) => "<li>" + (String(h.url || "").startsWith("https://") ? '<a target="_blank" rel="noopener" href="' + esc(h.url) + '">' + esc(h.title) + "</a>" : esc(h.title))
+    + ' <span class="muted">' + esc([h.source, h.when].filter(Boolean).join(" · ")) + "</span></li>").join("");
+  return ((n.flags || []).length ? '<div class="note warn">Headlines mention: <b>' + esc(n.flags.join(", ")) + "</b>. Read them before buying.</div>" : "")
+    + (soon ? '<div class="note warn">Earnings in ' + plural(n.earnings_in, "session") + ", so the report could land while you hold it.</div>" : "")
+    + '<details class="news"><summary>News (' + heads.length + ")" + (e ? " · " + esc(e) : "") + '</summary><div class="in"><ul class="rules">'
+    + (items || "<li>No headlines in the last 4 days.</li>") + '</ul><p class="sub muted" style="font-size:12px">For your judgement only. Headlines do not change the score.</p></div></details>';
+}
 function sellActs(sym, price, quiet) {
   return canTrade()
     ? '<button class="small ' + (quiet ? "" : "sell") + '" data-tsell="' + esc(sym) + '">Sell all ' + esc(sym) + "</button>" + rhLink(sym, "View in Robinhood")
@@ -611,6 +628,7 @@ function renderBoard() {
     + stat("Oversold", b.rsi2.toFixed(1) + " / 100") + stat("Daily range", (b.atr_pct * 100).toFixed(1) + "%") + stat("Plan", usd(dollars || b.dollars, 0)) + "</div>"
     + '<div class="why">' + ((b.confidence_reasons || []).length ? "<b>Why it scores:</b> " + esc(b.confidence_reasons.join("; ")) + "."
       : (b.confidence == null ? "" : "None of the six confidence checks is met. Picks like this had almost no edge in testing.")) + "</div>"
+    + newsBlock(b.news)
     + '<div class="acts">' + (canTrade() && fresh
         ? '<button class="small buy" data-tbuy="' + esc(b.sym) + '" data-dollars="' + (dollars || b.dollars) + '"' + (held[b.sym] ? " disabled" : "") + ">" + (held[b.sym] ? "Already bought" : "Buy " + usd(dollars || b.dollars, 0)) + "</button>" + rhLink(b.sym, "View in Robinhood")
         : rhLink(b.sym) + '<button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log the buy</button>') + "</div></div>").join("");
@@ -804,14 +822,20 @@ function renderStrategy() {
   body.innerHTML =
     '<p>Every trading day, screen the S&amp;P 500 for volatile, liquid stocks that just dropped sharply. Buy the most stretched ones at the close, and sell into the bounce within a week. Long only, no margin.</p>'
     + '<div class="panel stack"><h2>Your day</h2><ul class="rules"><li><b>About 3:35pm ET</b> the screener runs by itself. Open the Today page around 3:45pm; press Run now if the list isn\'t marked Final.</li>'
-    + "<li><b>Before 4pm</b> buy what's listed, in Robinhood, by dollar amount. Log each buy.</li><li><b>Next morning at the open</b> sell whatever the list said to sell. Log each sell.</li><li><b>Once a week</b> read the Journal page.</li></ul></div>"
+    + "<li><b>Before 4pm</b> check each pick's confidence and news, press <b>Buy</b>, look at Robinhood's quote, and confirm. High-confidence picks are where the edge is.</li>"
+    + "<li><b>Next morning after 9:30</b> press <b>Sell all</b> on whatever the list said to sell.</li>"
+    + "<li><b>Nothing to log.</b> Fills land in the Journal on their own, with the executed price and the confidence score.</li><li><b>Once a week</b> read the Journal page.</li></ul></div>"
     + '<div class="two"><div class="panel stack"><h2>A stock qualifies when</h2>' + li(a.screen) + '</div>'
     + '<div class="panel stack"><h2>The trade</h2><dl><dt>Rank</dt><dd>' + esc(a.rank) + "</dd><dt>Buy</dt><dd>" + esc(a.buy) + "</dd><dt>Sell</dt><dd>" + esc(a.sell) + "</dd><dt>Idle cash</dt><dd>" + esc(a.core) + "</dd></dl></div></div>"
     + (a.confidence ? '<div class="panel stack"><h2>Confidence score</h2><p>' + esc(a.confidence.what) + "</p><p>" + esc(a.confidence.meaning) + "</p></div>" : "")
     + (a.spread ? '<div class="panel stack"><h2>SPY spread, the side strategy</h2><dl><dt>Trade</dt><dd>' + esc(a.spread.trade) + "</dd><dt>When</dt><dd>" + esc(a.spread.when) + "</dd><dt>Expect</dt><dd>" + esc(a.spread.expect) + "</dd><dt>Cash</dt><dd>" + esc(a.spread.cash) + "</dd></dl></div>" : "")
+    + (a.trading ? '<div class="panel stack"><h2>How orders are placed</h2><p>' + esc(a.trading.how) + "</p><p>" + esc(a.trading.sync) + '</p><h3 style="font-size:14px">Hard limits the buttons cannot exceed</h3>' + li(a.trading.limits) + "</div>" : "")
+    + (a.news ? '<div class="panel stack"><h2>News</h2><p>' + esc(a.news.tested) + '</p><h3 style="font-size:14px">Already built into the rules</h3>' + li(a.news.built_in) + "<p>" + esc(a.news.shown) + "</p></div>" : "")
+    + (a.calm ? '<div class="panel stack"><h2>Calm uptrends</h2><p>' + esc(a.calm.finding) + '</p><h3 style="font-size:14px">What was tested for calm markets</h3>' + li(a.calm.tested) + "<p><b>" + esc(a.calm.answer) + "</b></p></div>" : "")
     + '<div class="panel stack"><h2>What the backtests say to expect</h2><dl>' + Object.entries({ yearly: "Per year", edge: "Edge", win_rate: "Win rate", trade: "Per trade", month: "Per month", drawdown: "Worst drops", trades: "Activity" })
       .map(([k, label]) => "<dt>" + label + "</dt><dd>" + esc(a.expect[k]) + "</dd>").join("") + "</dl></div>"
     + '<div class="panel stack"><h2>Market types</h2><dl>' + Object.entries(a.regimes).map(([k, v]) => "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>").join("") + "</dl></div>"
+    + (a.rejected ? '<div class="panel stack"><h2>Tested and rejected</h2><p class="sub">Each of these was tried on the historical data and did not hold up, so it is not part of the plan.</p>' + li(a.rejected) + "</div>" : "")
     + '<div class="two"><div class="panel stack"><h2>Rules to stick to</h2>' + li(a.rules) + '</div><div class="panel stack"><h2>Keep in mind</h2>' + li(a.caveats) + "</div></div>";
 }
 
