@@ -149,6 +149,21 @@ details > summary::-webkit-details-marker { display: none; }
 details > summary::before { content: "+"; font: 600 16px var(--mono); color: var(--muted); width: 14px; }
 details[open] > summary::before { content: "–"; }
 details > .in { padding: 0 16px 16px; display: grid; gap: 12px; }
+ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; display: grid; gap: 0; }
+ol.steps li { counter-increment: step; position: relative; padding: 0 0 18px 40px; display: grid; gap: 4px; }
+ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--axis); font: 600 12px/26px var(--mono); text-align: center; color: var(--ink-2); }
+ol.steps li::after { content: ""; position: absolute; left: 13px; top: 30px; bottom: 2px; width: 1px; background: var(--hair); }
+ol.steps li:last-child::after { display: none; }
+ol.steps li:last-child::before { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+ol.steps h3 { font-size: 15px; }
+button.chip { border-radius: 99px; padding: 5px 12px; font-size: 13px; }
+button.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--ground); }
+button.chip[aria-pressed="true"] .muted { color: inherit; opacity: .7; }
+details.study > summary { align-items: flex-start; font-weight: 400; gap: 10px; }
+details.study .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
+details.study .ttl { font-weight: 600; font-size: 15px; }
+details.study .take { font-size: 13px; color: var(--ink-2); }
 details.news { border: 0; background: var(--sunk); border-radius: 8px; }
 details.news > summary { padding: 8px 12px; font-size: 13px; font-weight: 500; }
 details.news > .in { padding: 0 12px 10px; }
@@ -225,6 +240,9 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
       <button class="tab" role="tab" data-tab="journal" aria-selected="false">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 15.5l4-5 3.2 2.6 5.8-7.6"/></svg>
         <span>Journal</span></button>
+      <button class="tab" role="tab" data-tab="studies" aria-selected="false">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5h4M8.8 3.5v4.6L4.6 15a1.2 1.2 0 001 1.8h8.8a1.2 1.2 0 001-1.8l-4.2-6.9V3.5"/><path d="M6.6 12.5h6.8"/></svg>
+        <span>Studies</span></button>
       <button class="tab" role="tab" data-tab="strategy" aria-selected="false">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h8.5a1.5 1.5 0 011.5 1.5v11.5H6.5A1.5 1.5 0 015 15V3.5z"/><path d="M8 7.5h4M8 10.5h4"/></svg>
         <span>Strategy</span></button>
@@ -312,6 +330,11 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
     <div id="jrnBody" class="stack-lg"><p class="sub">Loading…</p></div>
   </section>
 
+  <section id="p-studies" class="stack-lg" data-page hidden>
+    <div class="sec-head"><h1>Studies</h1><span id="stuStamp" class="sub muted spacer"></span></div>
+    <div id="studiesBody" class="stack-lg"><p class="sub">Loading…</p></div>
+  </section>
+
   <section id="p-strategy" class="stack-lg" data-page hidden>
     <h1>The strategy</h1>
     <div id="aboutBody" class="stack-lg"><p class="sub">Loading…</p></div>
@@ -343,7 +366,7 @@ const niceDay = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US"
 
 let cfg = {};
 try { cfg = JSON.parse(localStorage.getItem("dipdesk") || "{}"); } catch (e) { cfg = {}; }
-const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
+const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
 const canTrade = () => !!(cfg.tradeToken && !LOCAL);
 
 function toast(msg) {
@@ -411,12 +434,12 @@ async function loadAll() {
   if (!cfg.token && !LOCAL) { showConnect(true); return; }
   $("conn").textContent = "loading…";
   try {
-    const [screen, trades, signals, review, about, settings, account] = await Promise.all([
+    const [screen, trades, signals, review, about, settings, account, studies] = await Promise.all([
       getJSON("data/screen_latest.json", null), getJSON("data/trades.json", []),
       getJSON("data/signals.json", []), getJSON("data/review.json", null),
-      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null)]);
+      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null)]);
     Object.assign(state, { screen: screen.data, trades: trades.data, tradesSha: trades.sha, signals: signals.data,
-      review: review.data, about: about.data, account: account.data, settings: settings.data, settingsSha: settings.sha });
+      review: review.data, about: about.data, account: account.data, studies: studies.data, settings: settings.data, settingsSha: settings.sha });
     $("conn").textContent = LOCAL ? "local preview" : "connected";
     showConnect(false); renderAll();
   } catch (e) { $("conn").textContent = "not connected"; toast(e.message); showConnect(true); }
@@ -425,7 +448,7 @@ function showConnect(on) {
   $("connect").hidden = !on;
   $("cfgOwner").value = cfg.owner || ""; $("cfgRepo").value = cfg.repo || "robinhood-bot"; $("cfgToken").value = cfg.token || ""; $("cfgTrade").value = cfg.tradeToken || "";
 }
-function renderAll() { renderToday(); renderPositions(); renderJournal(); renderStrategy(); }
+function renderAll() { renderToday(); renderPositions(); renderJournal(); renderStudies(); renderStrategy(); }
 
 /* ---------------- shared pieces ---------------- */
 function meter(score, level, of = 6) {
@@ -623,10 +646,12 @@ function renderBoard() {
       : "Nothing qualifies today. That's common, and no trade is the right move.") + "</p>"; return;
   }
   el.innerHTML = items.map((b) => '<div class="card' + (fresh ? "" : " dim") + '"><div class="top"><div class="name"><span class="sym">' + esc(b.sym) + '</span><span class="muted" style="font-size:13px">' + esc(b.sector || "") + "</span></div>"
-    + (b.confidence == null ? "" : meter(b.conf, b.level)) + "</div>"
-    + '<div class="stats">' + stat("Price", usd(b.price)) + stat("5-day", pct(b.ret_5d), "down") + stat("Gap today", pct(b.gap), "down")
+    + (b.kind === "momentum" ? '<span class="pill">Momentum dip · not scored</span>' : b.confidence == null ? "" : meter(b.conf, b.level)) + "</div>"
+    + '<div class="stats">' + stat("Price", usd(b.price)) + stat("5-day", pct(b.ret_5d), cls(b.ret_5d))
+    + (b.kind === "momentum" ? stat("6-month", pct(b.mom_6m, 0), cls(b.mom_6m)) : stat("Gap today", pct(b.gap), "down"))
     + stat("Oversold", b.rsi2.toFixed(1) + " / 100") + stat("Daily range", (b.atr_pct * 100).toFixed(1) + "%") + stat("Plan", usd(dollars || b.dollars, 0)) + "</div>"
-    + '<div class="why">' + ((b.confidence_reasons || []).length ? "<b>Why it scores:</b> " + esc(b.confidence_reasons.join("; ")) + "."
+    + '<div class="why">' + (b.kind === "momentum" ? "<b>Momentum dip:</b> a top-fifth stock over 6 months having a bad couple of days. A smaller edge than a high-confidence gap-down dip, and not scored."
+      : (b.confidence_reasons || []).length ? "<b>Why it scores:</b> " + esc(b.confidence_reasons.join("; ")) + "."
       : (b.confidence == null ? "" : "None of the six confidence checks is met. Picks like this had almost no edge in testing.")) + "</div>"
     + newsBlock(b.news)
     + '<div class="acts">' + (canTrade() && fresh
@@ -641,7 +666,8 @@ function spreadSection(sp) {
     + ' <span class="muted">· ' + esc(f.detail) + "</span></span></li>").join("") + "</ul>";
   const what = sp.signal
     ? '<div class="note good"><b>Signal.</b> Sell the ' + sp.short_strike + " put and buy the " + sp.long_strike + " put, expiring " + esc(niceDay(sp.expiry)) + " (" + sp.days + " days), one contract. Most you can lose is about $"
-      + sp.max_loss + ". Skip it if the credit is under $" + sp.min_credit.toFixed(2) + " a share, and keep about $100 of cash free as collateral.</div>"
+      + sp.max_loss + ". Skip it if the credit is under $" + sp.min_credit.toFixed(2) + " a share, and keep about $100 of cash free as collateral."
+      + (sp.max_open ? " Up to " + sp.max_open + " spreads open at once, at least " + sp.min_gap_days + " days apart." : "") + "</div>"
       + '<div class="acts"><a class="btn" target="_blank" rel="noopener" href="https://robinhood.com/options/chains/' + esc(sp.symbol) + '">Open ' + esc(sp.symbol) + " options in Robinhood</a></div>"
     : '<p class="why">No trade today. It needs ' + sp.min_score + " of 6; this spread only had an edge when fear was elevated. If it fired now it would be the " + sp.short_strike + " / " + sp.long_strike + " put spread expiring " + esc(niceDay(sp.expiry)) + ".</p>";
   return '<section class="stack"><div class="sec-head"><h2>' + esc(sp.symbol) + ' put credit spread</h2><span class="count ' + (sp.signal ? "on" : "") + '">' + (sp.signal ? "signal" : "no signal") + "</span></div>"
@@ -814,18 +840,46 @@ let chartTimer; window.addEventListener("resize", () => { clearTimeout(chartTime
   chartTimer = setTimeout(() => { if (state.review && state.review.n_closed && !$("p-journal").hidden) drawChart(state.review.closed); }, 150); });
 function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
 
+/* ---------------- studies ---------------- */
+const VERDICT = { adopted: ["good", "Adopted"], rejected: ["bad", "Rejected"], optional: ["warn", "Optional"], info: ["", "For information"] };
+let stuFilter = "all";
+function renderStudies() {
+  const d = state.studies, body = $("studiesBody");
+  $("stuStamp").textContent = d ? "Updated " + niceDay(d.updated) : "";
+  if (!d) { body.innerHTML = '<p class="sub">The list of studies appears after the next update.</p>'; return; }
+  const counts = d.studies.reduce((m, s) => { m[s.verdict] = (m[s.verdict] || 0) + 1; return m; }, {});
+  const chip = (key, label, n) => '<button class="chip" data-stu="' + key + '" aria-pressed="' + (stuFilter === key) + '">' + esc(label) + ' <span class="muted">' + n + "</span></button>";
+  const shown = d.studies.filter((s) => stuFilter === "all" || s.verdict === stuFilter);
+  body.innerHTML =
+    '<p class="sub">' + esc(d.method) + "</p>"
+    + '<div class="panel stack"><h2>What you trade now</h2><dl>' + d.current.map((c) => "<dt>" + esc(c.label) + "</dt><dd>" + esc(c.text) + "</dd>").join("") + "</dl></div>"
+    + '<section class="stack"><h2>How the strategy was chosen</h2><ol class="steps">' + d.path.map((p) => '<li><div class="row"><h3>' + esc(p.title) + '</h3><span class="pill spacer">' + esc(p.outcome) + '</span></div><p class="sub">' + esc(p.text) + "</p></li>").join("") + "</ol></section>"
+    + '<section class="stack"><div class="sec-head"><h2>Every study</h2><span class="count">' + d.studies.length + '</span></div><div class="row">'
+    + chip("all", "All", d.studies.length) + Object.keys(VERDICT).filter((k) => counts[k]).map((k) => chip(k, VERDICT[k][1], counts[k])).join("") + "</div>"
+    + '<p class="sub muted" style="font-size:13px">Newest first. Tap a study to see what was tested and the numbers.</p>'
+    + shown.map((s) => { const v = VERDICT[s.verdict] || ["", s.verdict];
+      return '<details class="study"><summary><span class="grow"><span class="ttl">' + esc(s.title) + '</span><span class="take">' + esc(s.takeaway) + '</span></span><span class="pill ' + v[0] + '">' + esc(v[1]) + "</span></summary>"
+        + '<div class="in"><dl><dt>Question</dt><dd>' + esc(s.question) + "</dd><dt>Tested</dt><dd>" + esc(s.tested) + "</dd><dt>Result</dt><dd>" + esc(s.result) + "</dd></dl>"
+        + (s.rows ? '<div class="scroll"><table><thead><tr>' + s.cols.map((c, i) => "<th" + (i ? ' class="num"' : "") + ">" + esc(c) + "</th>").join("") + "</tr></thead><tbody>"
+          + s.rows.map((r) => "<tr>" + r.map((c, i) => "<td" + (i ? ' class="num"' : ' style="white-space:normal;min-width:150px"') + ">" + esc(c) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>" : "")
+        + '<p class="sub muted" style="font-size:12px">' + esc(s.area) + " · " + esc(s.script) + "</p></div></details>"; }).join("") + "</section>";
+  body.querySelectorAll("[data-stu]").forEach((b) => b.addEventListener("click", () => { stuFilter = b.dataset.stu; renderStudies(); }));
+}
+
 /* ---------------- strategy ---------------- */
 function renderStrategy() {
   const a = state.about, body = $("aboutBody");
   if (!a) { body.innerHTML = '<p class="sub">The strategy summary appears after the first screener run.</p>'; return; }
   const li = (xs) => '<ul class="rules">' + xs.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul>";
   body.innerHTML =
-    '<p>Every trading day, screen the S&amp;P 500 for volatile, liquid stocks that just dropped sharply. Buy the most stretched ones at the close, and sell into the bounce within a week. Long only, no margin.</p>'
+    '<p>Every trading day, screen the S&amp;P 500 for stocks that just dropped sharply: volatile names that gapped down, and strong names having a bad couple of days. Buy the most stretched ones at the close, and sell into the bounce within a week. Long only, no margin.</p>'
     + '<div class="panel stack"><h2>Your day</h2><ul class="rules"><li><b>About 3:35pm ET</b> the screener runs by itself. Open the Today page around 3:45pm; press Run now if the list isn\'t marked Final.</li>'
     + "<li><b>Before 4pm</b> check each pick's confidence and news, press <b>Buy</b>, look at Robinhood's quote, and confirm. High-confidence picks are where the edge is.</li>"
     + "<li><b>Next morning after 9:30</b> press <b>Sell all</b> on whatever the list said to sell.</li>"
     + "<li><b>Nothing to log.</b> Fills land in the Journal on their own, with the executed price and the confidence score.</li><li><b>Once a week</b> read the Journal page.</li></ul></div>"
-    + '<div class="two"><div class="panel stack"><h2>A stock qualifies when</h2>' + li(a.screen) + '</div>'
+    + (a.profile ? '<div class="note">' + esc(a.profile) + "</div>" : "")
+    + '<div class="two"><div class="panel stack"><h2>A stock qualifies when</h2>' + li(a.screen)
+    + (a.screen_momentum ? '<h3 style="font-size:14px">Or, as a momentum dip</h3>' + li(a.screen_momentum) : "") + '</div>'
     + '<div class="panel stack"><h2>The trade</h2><dl><dt>Rank</dt><dd>' + esc(a.rank) + "</dd><dt>Buy</dt><dd>" + esc(a.buy) + "</dd><dt>Sell</dt><dd>" + esc(a.sell) + "</dd><dt>Idle cash</dt><dd>" + esc(a.core) + "</dd></dl></div></div>"
     + (a.confidence ? '<div class="panel stack"><h2>Confidence score</h2><p>' + esc(a.confidence.what) + "</p><p>" + esc(a.confidence.meaning) + "</p></div>" : "")
     + (a.spread ? '<div class="panel stack"><h2>SPY spread, the side strategy</h2><dl><dt>Trade</dt><dd>' + esc(a.spread.trade) + "</dd><dt>When</dt><dd>" + esc(a.spread.when) + "</dd><dt>Expect</dt><dd>" + esc(a.spread.expect) + "</dd><dt>Cash</dt><dd>" + esc(a.spread.cash) + "</dd></dl></div>" : "")
@@ -840,7 +894,7 @@ function renderStrategy() {
 }
 
 /* ---------------- wiring ---------------- */
-const TABS = ["today", "positions", "journal", "strategy"];
+const TABS = ["today", "positions", "journal", "studies", "strategy"];
 const OLD = { screener: "today", trade: "positions", about: "strategy" };
 function showTab(name) {
   name = OLD[name] || name; if (!TABS.includes(name)) name = "today";
