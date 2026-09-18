@@ -149,14 +149,15 @@ details > summary::-webkit-details-marker { display: none; }
 details > summary::before { content: "+"; font: 600 16px var(--mono); color: var(--muted); width: 14px; }
 details[open] > summary::before { content: "–"; }
 details > .in { padding: 0 16px 16px; display: grid; gap: 12px; }
-ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; display: grid; gap: 0; }
-ol.steps li { counter-increment: step; position: relative; padding: 0 0 18px 40px; display: grid; gap: 4px; }
-ol.steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%;
-  background: var(--surface); border: 1px solid var(--axis); font: 600 12px/26px var(--mono); text-align: center; color: var(--ink-2); }
-ol.steps li::after { content: ""; position: absolute; left: 13px; top: 30px; bottom: 2px; width: 1px; background: var(--hair); }
-ol.steps li:last-child::after { display: none; }
-ol.steps li:last-child::before { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-ol.steps h3 { font-size: 15px; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+details.step { border-radius: 10px; }
+details.step > summary { padding: 9px 12px; font-weight: 500; font-size: 14px; gap: 10px; }
+details.step > summary::before { display: none; }
+details.step .n { width: 22px; height: 22px; border-radius: 50%; flex: none; background: var(--sunk); border: 1px solid var(--hair);
+  font: 600 11px/22px var(--mono); text-align: center; color: var(--ink-2); }
+ol.steps li:last-child details.step .n { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+details.step .grow { flex: 1; min-width: 0; }
+details.step > p { padding: 0 12px 12px 44px; }
 button.chip { border-radius: 99px; padding: 5px 12px; font-size: 13px; }
 button.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--ground); }
 button.chip[aria-pressed="true"] .muted { color: inherit; opacity: .7; }
@@ -289,6 +290,7 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
   <section id="p-positions" class="stack-lg" data-page hidden>
     <div class="sec-head"><h1>Positions</h1><span class="count" id="posCount">0</span></div>
     <div id="acctLine" class="sub"></div>
+    <div id="ddNote" class="note bad" hidden></div>
     <div id="openBody" class="stack"></div>
     <details id="manual"><summary>Log a trade by hand</summary><div class="in">
     <p class="sub" id="manualNote"></p>
@@ -372,7 +374,7 @@ const niceDay = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US"
 
 let cfg = {};
 try { cfg = JSON.parse(localStorage.getItem("dipdesk") || "{}"); } catch (e) { cfg = {}; }
-const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
+const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, equity: [], settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
 const canTrade = () => !!(cfg.tradeToken && !LOCAL);
 
 function toast(msg) {
@@ -440,12 +442,12 @@ async function loadAll() {
   if (!cfg.token && !LOCAL) { showConnect(true); return; }
   $("conn").textContent = "loading…";
   try {
-    const [screen, trades, signals, review, about, settings, account, studies] = await Promise.all([
+    const [screen, trades, signals, review, about, settings, account, studies, equity] = await Promise.all([
       getJSON("data/screen_latest.json", null), getJSON("data/trades.json", []),
       getJSON("data/signals.json", []), getJSON("data/review.json", null),
-      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null)]);
+      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null), getJSON("data/equity.json", [])]);
     Object.assign(state, { screen: screen.data, trades: trades.data, tradesSha: trades.sha, signals: signals.data,
-      review: review.data, about: about.data, account: account.data, studies: studies.data, settings: settings.data, settingsSha: settings.sha });
+      review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], settings: settings.data, settingsSha: settings.sha });
     $("conn").textContent = LOCAL ? "local preview" : "connected";
     showConnect(false); renderAll();
   } catch (e) { $("conn").textContent = "not connected"; toast(e.message); showConnect(true); }
@@ -726,11 +728,15 @@ function renderPositions() {
       + '<button class="small ghost danger" data-del="' + esc(t.id) + '" style="flex:0 0 auto">Delete</button></div></div>';
   }).join("") : '<p class="sub">No open positions. When you buy something from the Today page, log it and it shows up here with its exit countdown.</p>';
   const a = state.account;
-  $("acctLine").innerHTML = a ? "Robinhood " + esc(a.account) + ": cash <b>" + usd(a.cash) + "</b>, buying power <b>" + usd(a.buying_power) + "</b>"
+  const eq = state.equity || [], peak = Math.max(0, ...eq.map((e) => e.value)), cur = a && a.total_value || (eq.length ? eq[eq.length - 1].value : 0);
+  const dd = peak > 0 && cur > 0 ? cur / peak - 1 : null;
+  $("acctLine").innerHTML = a ? "Robinhood " + esc(a.account) + ": value <b>" + usd(cur || 0) + "</b>" + (dd != null ? " (" + (dd >= -0.001 ? "at its high" : pct(dd, 1) + " from its high of " + usd(peak, 0)) + ")" : "") + ", cash <b>" + usd(a.cash) + "</b>, buying power <b>" + usd(a.buying_power) + "</b>"
     + (a.positions.length ? ", holding " + a.positions.map((x) => esc(x.sym)).join(", ") : "") + '. <span class="muted">Checked ' + esc(a.as_of) + ".</span>"
     + (canTrade() ? ' <button class="small ghost" id="syncNow">Sync now</button>' : "")
     : "Robinhood is not connected yet. You place orders in the app and log them here.";
   if ($("syncNow")) $("syncNow").addEventListener("click", syncNow);
+  $("ddNote").hidden = !(dd != null && dd <= -0.15);
+  if (dd != null && dd <= -0.15) $("ddNote").innerHTML = "<b>The account is " + pct(dd, 0) + " below its high.</b> In testing, drops this size happened in 2020 and 2022 and recovered, and pausing tested worse than continuing (see the Studies page). Every open trade still has its exit. This is the moment to re-read the plan, not to change it on the spot.";
   $("manual").open = !a;
   $("manualNote").textContent = a ? "You normally don't need this. Filled stock orders in your Agentic account are logged automatically within about half an hour, or within a minute when placed from here."
     : "Log each buy and sell after you place it in Robinhood.";
@@ -861,7 +867,8 @@ function renderStudies() {
   body.innerHTML =
     '<p class="sub">' + esc(d.method) + "</p>"
     + '<div class="panel stack"><h2>What you trade now</h2><dl>' + d.current.map((c) => "<dt>" + esc(c.label) + "</dt><dd>" + esc(c.text) + "</dd>").join("") + "</dl></div>"
-    + '<section class="stack"><h2>How the strategy was chosen</h2><ol class="steps">' + d.path.map((p) => '<li><div class="row"><h3>' + esc(p.title) + '</h3><span class="pill spacer">' + esc(p.outcome) + '</span></div><p class="sub">' + esc(p.text) + "</p></li>").join("") + "</ol></section>"
+    + '<section class="stack"><div class="sec-head"><h2>How the strategy was chosen</h2><span class="count">' + d.path.length + ' steps</span></div><p class="sub muted" style="font-size:13px">Tap a step for the details.</p><ol class="steps">'
+    + d.path.map((p, i) => '<li><details class="step"><summary><span class="n">' + (i + 1) + '</span><span class="grow">' + esc(p.title) + '</span><span class="pill">' + esc(p.outcome) + '</span></summary><p class="sub">' + esc(p.text) + "</p></details></li>").join("") + "</ol></section>"
     + '<section class="stack"><div class="sec-head"><h2>Every study</h2><span class="count">' + d.studies.length + '</span></div><div class="row">'
     + chip("all", "All", d.studies.length) + Object.keys(VERDICT).filter((k) => counts[k]).map((k) => chip(k, VERDICT[k][1], counts[k])).join("") + "</div>"
     + '<p class="sub muted" style="font-size:13px">Newest first. Tap a study to see what was tested and the numbers.</p>'
