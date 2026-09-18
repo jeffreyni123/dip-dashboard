@@ -112,7 +112,7 @@ main > *, .stack > *, .stack-lg > *, .two > *, .tiles > *, .fields > *, .row > *
 .card { background: var(--surface); border: 1px solid var(--hair); border-radius: 12px; padding: 14px 16px; display: grid; gap: 10px; }
 .card.dim { opacity: .62; }
 .card .top { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
-.card .name { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
+.card .name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-right: auto; }
 .card .name .sym { font-size: 18px; }
 .card .acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .card .acts > * { flex: 1 1 140px; }
@@ -164,6 +164,12 @@ details.study > summary { align-items: flex-start; font-weight: 400; gap: 10px; 
 details.study .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
 details.study .ttl { font-weight: 600; font-size: 15px; }
 details.study .take { font-size: 13px; color: var(--ink-2); }
+.scrollbox { max-height: 72vh; overflow-y: auto; overscroll-behavior: contain; padding: 4px; margin: -4px;
+  scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+.scrollbox > .stack { padding-bottom: 4px; }
+.fade { position: relative; }
+.fade::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--ground)); }
 details.news { border: 0; background: var(--sunk); border-radius: 8px; }
 details.news > summary { padding: 8px 12px; font-size: 13px; font-weight: 500; }
 details.news > .in { padding: 0 12px 10px; }
@@ -607,12 +613,11 @@ function renderToday() {
 
   body.innerHTML =
     '<section class="stack"><div class="sec-head"><h2>' + (fresh ? "Sell at tomorrow's open" : "Sell at the open") + '</h2><span class="count ' + (r.sells.length ? "on" : "") + '">' + r.sells.length + "</span></div>" + sells + holding + unknown + "</section>"
-    + '<section class="stack"><div class="sec-head"><h2>Buy before the close</h2><span class="count ' + (r.buys.length ? "on" : "") + '">' + r.buys.length + "</span>"
-    + '<div class="tools spacer" id="boardTools"' + (r.buys.length > 1 ? "" : " hidden") + '><label class="check" style="font-size:13px"><input type="checkbox" id="boardHigh"> High confidence only</label>'
+    + '<section class="stack"><div class="sec-head"><h2>Buy before the close</h2><span class="count ' + (r.buys.length ? "on" : "") + '">' + r.buys.length + ((r.extra_buys || []).length ? " + " + r.extra_buys.length + " more" : "") + "</span>"
+    + '<div class="tools spacer" id="boardTools"' + (r.buys.length + (r.extra_buys || []).length > 1 ? "" : " hidden") + '><label class="check" style="font-size:13px"><input type="checkbox" id="boardHigh"> High confidence only</label>'
     + '<label style="display:flex;gap:6px;align-items:center;font-size:13px">Sort <select id="boardSort"><option value="confidence">Confidence</option><option value="rank">Strategy rank</option><option value="drop">Biggest drop</option></select></label></div></div>'
     + (fresh ? "" : '<div class="note warn">These were for the close on ' + esc(niceDay(r.as_of)) + ". They are no longer valid.</div>")
-    + '<div id="board" class="stack"></div>'
-    + (r.next_in_line.length ? '<p class="sub">Also qualified, but there was no room: ' + esc(r.next_in_line.join(", ")) + ".</p>" : "")
+    + '<div class="scrollbox fade"><div id="board" class="stack"></div></div>'
     + (r.skipped_earnings.length ? '<p class="sub">Skipped because they just reported earnings: ' + esc(r.skipped_earnings.join(", ")) + ".</p>" : "") + "</section>"
     + spreadSection(r.spread)
     + '<section class="stack"><h2>The market today</h2><div class="card"><div class="top"><div class="name"><span class="sym">' + esc(r.regime.replace(" + ", " · ").toUpperCase()) + "</span></div>"
@@ -620,7 +625,7 @@ function renderToday() {
     + '<p class="why">' + esc(r.regime_note) + "</p>"
     + '<p class="why">Keep about <b>' + usd(r.core_dollars, 0) + "</b> in " + esc(r.core_symbol || "cash") + ". " + plural(r.n_swing, "swing position") + " use about " + usd(r.swing_dollars, 0) + " of your " + usd(r.account, 0) + " account.</p></div></section>"
     + '<details><summary>How to read this page</summary><div class="in"><dl>'
-    + "<dt>Confidence</dt><dd>Six checks that mattered in testing. High (3 or more) carried nearly all of the edge; low picks had almost none.</dd>"
+    + "<dt>Confidence</dt><dd>Gap-down dips: six checks, out of 6. Momentum dips: four checks, out of 4. On either scale, high (3 or more) carried nearly all of the edge and low picks had almost none.</dd>"
     + "<dt>5-day</dt><dd>How far the stock has fallen over the last five sessions. Deeper drops bounced harder.</dd>"
     + "<dt>Gap today</dt><dd>How far below yesterday's close it opened. The screen needs at least 1% down.</dd>"
     + "<dt>Oversold</dt><dd>RSI(2), a 0 to 100 gauge of short-term selling. Under 10 is very oversold.</dd>"
@@ -634,25 +639,28 @@ function renderToday() {
 
 function renderBoard() {
   const r = state.screen, el = $("board"); if (!r || !el) return;
-  const sort = $("boardSort").value, highOnly = $("boardHigh").checked && r.buys.length > 1, fresh = r.as_of === nyDate();
+  const sort = $("boardSort").value, highOnly = $("boardHigh").checked, fresh = r.as_of === nyDate();
   try { localStorage.setItem("dipdesk-sort", sort); localStorage.setItem("dipdesk-high", $("boardHigh").checked ? "1" : "0"); } catch (e) { /* ignore */ }
   const dollars = state.settings.default_dollars || (r.buys[0] && r.buys[0].dollars);
   const held = Object.fromEntries(state.trades.filter((t) => !t.exit_date).map((t) => [t.sym, 1]));
-  let items = r.buys.map((b) => ({ ...b, conf: b.confidence ?? 0, level: b.confidence_level || "low" }));
+  let items = r.buys.concat(r.extra_buys || []).map((b) => ({ ...b, conf: b.confidence ?? 0, level: b.confidence_level || "low", room: b.room !== false }));
   if (highOnly) items = items.filter((b) => b.level === "high");
-  items.sort(sort === "confidence" ? (a, b) => b.conf - a.conf || a.rank - b.rank : sort === "drop" ? (a, b) => a.ret_5d - b.ret_5d : (a, b) => a.rank - b.rank);
+  items.sort(sort === "confidence" ? (a, b) => (b.level === "high") - (a.level === "high") || b.conf / (b.confidence_max || 6) - a.conf / (a.confidence_max || 6) || a.rank - b.rank : sort === "drop" ? (a, b) => a.ret_5d - b.ret_5d : (a, b) => a.rank - b.rank);
   if (!items.length) {
-    el.innerHTML = '<p class="sub">' + (r.buys.length ? "No high-confidence picks today. Untick the filter to see the other " + plural(r.buys.length, "pick") + "."
+    const n = r.buys.length + (r.extra_buys || []).length;
+    el.innerHTML = '<p class="sub">' + (n ? "No high-confidence picks today. Untick the filter to see the other " + plural(n, "pick") + "."
       : "Nothing qualifies today. That's common, and no trade is the right move.") + "</p>"; return;
   }
-  el.innerHTML = items.map((b) => '<div class="card' + (fresh ? "" : " dim") + '"><div class="top"><div class="name"><span class="sym">' + esc(b.sym) + '</span><span class="muted" style="font-size:13px">' + esc(b.sector || "") + "</span></div>"
-    + (b.kind === "momentum" ? '<span class="pill">Momentum dip · not scored</span>' : b.confidence == null ? "" : meter(b.conf, b.level)) + "</div>"
+  el.innerHTML = items.map((b) => '<div class="card' + (fresh ? "" : " dim") + '"><div class="top"><div class="name"><span class="sym">' + esc(b.sym) + '</span><span class="muted" style="font-size:13px">' + esc(b.sector || "") + "</span>"
+    + (b.kind === "momentum" ? '<span class="pill">Momentum dip</span>' : "") + (b.room ? "" : '<span class="pill warn">Past the daily limit</span>') + "</div>"
+    + (b.confidence == null ? "" : meter(b.conf, b.level, b.confidence_max || 6)) + "</div>"
     + '<div class="stats">' + stat("Price", usd(b.price)) + stat("5-day", pct(b.ret_5d), cls(b.ret_5d))
     + (b.kind === "momentum" ? stat("6-month", pct(b.mom_6m, 0), cls(b.mom_6m)) : stat("Gap today", pct(b.gap), "down"))
     + stat("Oversold", b.rsi2.toFixed(1) + " / 100") + stat("Daily range", (b.atr_pct * 100).toFixed(1) + "%") + stat("Plan", usd(dollars || b.dollars, 0)) + "</div>"
-    + '<div class="why">' + (b.kind === "momentum" ? "<b>Momentum dip:</b> a top-fifth stock over 6 months having a bad couple of days. A smaller edge than a high-confidence gap-down dip, and not scored."
-      : (b.confidence_reasons || []).length ? "<b>Why it scores:</b> " + esc(b.confidence_reasons.join("; ")) + "."
-      : (b.confidence == null ? "" : "None of the six confidence checks is met. Picks like this had almost no edge in testing.")) + "</div>"
+    + '<div class="why">' + ((b.confidence_reasons || []).length ? "<b>Why it scores:</b> " + esc(b.confidence_reasons.join("; ")) + "."
+      : (b.confidence == null ? "" : "None of the " + (b.confidence_max || 6) + " confidence checks is met. Picks like this had almost no edge in testing."))
+    + (b.kind === "momentum" ? " <span class=\"muted\">A strong stock (top fifth over 6 months) having a bad couple of days; scored on its own 0-4 scale.</span>" : "")
+    + (b.room ? "" : " <span class=\"muted\">The plan caps new buys at " + (r.room != null ? r.room : 5) + " today; this one qualified but is past the cap.</span>") + "</div>"
     + newsBlock(b.news)
     + '<div class="acts">' + (canTrade() && fresh
         ? '<button class="small buy" data-tbuy="' + esc(b.sym) + '" data-dollars="' + (dollars || b.dollars) + '"' + (held[b.sym] ? " disabled" : "") + ">" + (held[b.sym] ? "Already bought" : "Buy " + usd(dollars || b.dollars, 0)) + "</button>" + rhLink(b.sym, "View in Robinhood")
@@ -857,12 +865,12 @@ function renderStudies() {
     + '<section class="stack"><div class="sec-head"><h2>Every study</h2><span class="count">' + d.studies.length + '</span></div><div class="row">'
     + chip("all", "All", d.studies.length) + Object.keys(VERDICT).filter((k) => counts[k]).map((k) => chip(k, VERDICT[k][1], counts[k])).join("") + "</div>"
     + '<p class="sub muted" style="font-size:13px">Newest first. Tap a study to see what was tested and the numbers.</p>'
-    + shown.map((s) => { const v = VERDICT[s.verdict] || ["", s.verdict];
+    + '<div class="scrollbox fade"><div class="stack">' + shown.map((s) => { const v = VERDICT[s.verdict] || ["", s.verdict];
       return '<details class="study"><summary><span class="grow"><span class="ttl">' + esc(s.title) + '</span><span class="take">' + esc(s.takeaway) + '</span></span><span class="pill ' + v[0] + '">' + esc(v[1]) + "</span></summary>"
         + '<div class="in"><dl><dt>Question</dt><dd>' + esc(s.question) + "</dd><dt>Tested</dt><dd>" + esc(s.tested) + "</dd><dt>Result</dt><dd>" + esc(s.result) + "</dd></dl>"
         + (s.rows ? '<div class="scroll"><table><thead><tr>' + s.cols.map((c, i) => "<th" + (i ? ' class="num"' : "") + ">" + esc(c) + "</th>").join("") + "</tr></thead><tbody>"
           + s.rows.map((r) => "<tr>" + r.map((c, i) => "<td" + (i ? ' class="num"' : ' style="white-space:normal;min-width:150px"') + ">" + esc(c) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>" : "")
-        + '<p class="sub muted" style="font-size:12px">' + esc(s.area) + " · " + esc(s.script) + "</p></div></details>"; }).join("") + "</section>";
+        + '<p class="sub muted" style="font-size:12px">' + esc(s.area) + " · " + esc(s.script) + "</p></div></details>"; }).join("") + "</div></div></section>";
   body.querySelectorAll("[data-stu]").forEach((b) => b.addEventListener("click", () => { stuFilter = b.dataset.stu; renderStudies(); }));
 }
 
