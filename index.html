@@ -171,6 +171,12 @@ details.study .take { font-size: 13px; color: var(--ink-2); }
 .fade { position: relative; }
 .fade::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--ground)); }
+.gauge { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.gauge > div { text-align: center; font: 500 11px var(--sans); color: var(--muted); }
+.gauge > div > i { display: block; height: 8px; border-radius: 3px; background: var(--hair); margin-bottom: 4px; }
+.gauge > div.on { color: var(--ink); font-weight: 600; }
+.gauge > div.on.l0 > i { background: var(--good); } .gauge > div.on.l1 > i { background: var(--accent); }
+.gauge > div.on.l2 > i { background: var(--warn); } .gauge > div.on.l3 > i { background: var(--bad); }
 details.news { border: 0; background: var(--sunk); border-radius: 8px; }
 details.news > summary { padding: 8px 12px; font-size: 13px; font-weight: 500; }
 details.news > .in { padding: 0 12px 10px; }
@@ -479,6 +485,14 @@ function newsBlock(n) {
     + '<details class="news"><summary>News (' + heads.length + ")" + (e ? " · " + esc(e) : "") + '</summary><div class="in"><ul class="rules">'
     + (items || "<li>No headlines in the last 4 days.</li>") + '</ul><p class="sub muted" style="font-size:12px">For your judgement only. Headlines do not change the score.</p></div></details>';
 }
+function fearGauge(f) {
+  if (!f) return "";
+  const range = (b, i, all) => (i ? all[i - 1].upto + (b.upto ? "-" + b.upto : "+") : "under " + b.upto);
+  return '<div class="stack" style="gap:8px"><div class="row"><b>Fear level: ' + esc(f.level) + '</b><span class="muted">VIX ' + f.vix + '</span></div>'
+    + '<div class="gauge" role="img" aria-label="Fear level ' + esc(f.level) + ', VIX ' + f.vix + '">'
+    + f.bands.map((b, i, all) => '<div class="l' + i + (i === f.index ? " on" : "") + '"><i></i>' + esc(b.name) + '<br><span style="font-weight:400">' + range(b, i, all) + "</span></div>").join("")
+    + '</div><p class="why">' + esc(f.note) + "</p></div>";
+}
 function sellActs(sym, price, quiet) {
   return canTrade()
     ? '<button class="small ' + (quiet ? "" : "sell") + '" data-tsell="' + esc(sym) + '">Sell all ' + esc(sym) + "</button>" + rhLink(sym, "View in Robinhood")
@@ -592,7 +606,8 @@ function renderHero() {
   $("hero").className = "hero " + s.tone;
   $("hero").innerHTML = '<div class="when">' + esc(s.when) + '</div><div class="say">' + esc(s.say) + '</div><p class="sub">' + esc(s.sub) + "</p>"
     + '<div class="row"><div class="facts">' + (status ? '<span class="pill ' + status[0] + '">' + esc(status[1]) + "</span>" : "")
-    + (r ? '<span class="pill">Updated ' + esc(s.fresh ? r.run_at.slice(11) : niceDay(r.as_of)) + "</span>" : "") + "</div>"
+    + (r ? '<span class="pill">Updated ' + esc(s.fresh ? r.run_at.slice(11) : niceDay(r.as_of)) + "</span>" : "")
+    + (r && r.fear ? '<span class="pill ' + ["good", "", "warn", "bad"][r.fear.index] + '">Fear: ' + esc(r.fear.level) + " · VIX " + r.fear.vix + "</span>" : "") + "</div>"
     + '<button class="' + (s.tone === "warn" ? "primary" : "") + ' small spacer" id="runNow">Run now</button></div>';
   $("runNow").addEventListener("click", runNow);
   const n = r && s.live ? r.buys.length + (r.spread && r.spread.signal ? 1 : 0) : 0;
@@ -624,7 +639,7 @@ function renderToday() {
     + spreadSection(r.spread)
     + '<section class="stack"><h2>The market today</h2><div class="card"><div class="top"><div class="name"><span class="sym">' + esc(r.regime.replace(" + ", " · ").toUpperCase()) + "</span></div>"
     + '<span class="pill">SPY ' + pct(r.spy_vs_ema) + ' vs its 200-day average</span><span class="pill">VIX ' + r.vix + "</span></div>"
-    + '<p class="why">' + esc(r.regime_note) + "</p>"
+    + fearGauge(r.fear) + '<p class="why">' + esc(r.regime_note) + "</p>"
     + '<p class="why">Keep about <b>' + usd(r.core_dollars, 0) + "</b> in " + esc(r.core_symbol || "cash") + ". " + plural(r.n_swing, "swing position") + " use about " + usd(r.swing_dollars, 0) + " of your " + usd(r.account, 0) + " account.</p></div></section>"
     + '<details><summary>How to read this page</summary><div class="in"><dl>'
     + "<dt>Confidence</dt><dd>Gap-down dips: six checks, out of 6. Momentum dips: four checks, out of 4. On either scale, high (3 or more) carried nearly all of the edge and low picks had almost none.</dd>"
