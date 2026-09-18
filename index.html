@@ -669,6 +669,15 @@ function renderBoard() {
         : rhLink(b.sym) + '<button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log the buy</button>') + "</div></div>").join("");
 }
 
+function aggressiveSpread(sp) {
+  const g = sp.aggressive; if (!g) return "";
+  return '<div class="order' + (g.signal ? "" : " no") + '"><div class="line"><span class="big">Aggressive: 2% spread, about 2 weeks</span>'
+    + '<span class="pill ' + (g.signal ? "warn" : "") + '">' + (g.signal ? "Signal" : "No signal") + "</span></div>"
+    + (g.signal
+      ? '<div class="why">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $" + sp.max_loss + ".</div>"
+      : '<div class="why">Fires on the same score-4+ days as the 5% spread' + (g.fed ? ", but a Fed decision on " + esc(niceDay(g.fed)) + " falls before its expiry" : "") + ". Optional and riskier: read the note.</div>")
+    + '<p class="why muted">' + esc(g.note) + "</p></div>";
+}
 function spreadSection(sp) {
   if (!sp) return "";
   const level = sp.signal ? "high" : sp.score === sp.min_score - 1 ? "medium" : "low";
@@ -682,7 +691,7 @@ function spreadSection(sp) {
     : '<p class="why">No trade today. It needs ' + sp.min_score + " of 6; this spread only had an edge when fear was elevated. If it fired now it would be the " + sp.short_strike + " / " + sp.long_strike + " put spread expiring " + esc(niceDay(sp.expiry)) + ".</p>";
   return '<section class="stack"><div class="sec-head"><h2>' + esc(sp.symbol) + ' put credit spread</h2><span class="count ' + (sp.signal ? "on" : "") + '">' + (sp.signal ? "signal" : "no signal") + "</span></div>"
     + '<div class="card"><div class="top"><div class="name"><span class="sym">' + esc(sp.symbol) + '</span><span class="muted" style="font-size:13px">' + usd(sp.price) + "</span></div>" + meter(sp.score, level) + "</div>"
-    + checks + what + '<p class="why muted">' + esc(sp.note) + "</p></div></section>";
+    + checks + what + '<p class="why muted">' + esc(sp.note) + "</p>" + aggressiveSpread(sp) + "</div></section>";
 }
 
 async function runNow() {
