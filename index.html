@@ -715,13 +715,15 @@ function renderBoard() {
 }
 
 function aggressiveSpread(sp) {
-  const g = sp.aggressive; if (!g) return "";
-  return '<div class="order' + (g.signal ? "" : " no") + '"><div class="line"><span class="big">Aggressive: 2% spread, about 2 weeks</span>'
-    + '<span class="pill ' + (g.signal ? "warn" : "") + '">' + (g.signal ? "Signal" : "No signal") + "</span></div>"
-    + (g.signal
-      ? '<div class="why">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $" + sp.max_loss + ".</div>"
-      : '<div class="why">Fires on the same score-4+ days as the 5% spread' + (g.fed ? ", but a Fed decision on " + esc(niceDay(g.fed)) + " falls before its expiry" : "") + ". Optional and riskier: read the note.</div>")
-    + '<p class="why muted">' + esc(g.note) + "</p></div>";
+  const list = Array.isArray(sp.aggressive) ? sp.aggressive : [];
+  if (!list.length) return "";
+  return '<h3 style="font-size:14px;margin-top:4px">Aggressive spreads, 2% out</h3>' + list.map((g) =>
+    '<div class="order' + (g.signal ? "" : " no") + '"><div class="line"><span class="big">' + esc(g.name) + '</span><span class="pill ' + (g.signal ? "warn" : "") + '">' + (g.signal ? "Signal" : "No signal") + "</span></div>"
+    + '<ul class="checks">' + g.checks.map((c) => '<li class="' + (c.met ? "yes" : "no") + '"><span class="mark">' + (c.met ? "✓" : "·") + "</span><span>" + esc(c.label) + ' <span class="muted">· ' + esc(c.detail) + "</span></span></li>").join("") + "</ul>"
+    + (g.signal ? '<div class="note warn">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $"
+        + sp.max_loss + ". Up to " + g.max_open + " open at once" + (g.min_gap_days > 1 ? ", at least " + g.min_gap_days + " days apart" : ", one new one a day at most") + ". Enter in the last 20 minutes of the day.</div>"
+      : '<div class="why">Would be the ' + g.short_strike + " / " + g.long_strike + " put spread expiring " + esc(niceDay(g.expiry)) + ".</div>")
+    + '<p class="why muted">' + esc(g.note) + "</p></div>").join("");
 }
 function spreadSection(sp) {
   if (!sp) return "";
