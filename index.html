@@ -162,6 +162,12 @@ button.chip { border-radius: 99px; padding: 5px 12px; font-size: 13px; }
 button.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--ground); }
 button.chip[aria-pressed="true"] .muted { color: inherit; opacity: .7; }
 details.study > summary { align-items: flex-start; font-weight: 400; gap: 10px; }
+details.study.compact > summary { align-items: center; padding: 9px 12px; }
+details.study.compact .ttl { font-size: 14px; font-weight: 500; }
+details.study.compact > .in { padding: 0 12px 12px; }
+details.fold > summary { padding: 10px 14px; font-size: 14px; gap: 10px; }
+details.fold > .in { padding: 0 14px 14px; }
+details.fold .grow { flex: 1; }
 details.study .grow { flex: 1; min-width: 0; display: grid; gap: 2px; }
 details.study .ttl { font-weight: 600; font-size: 15px; }
 details.study .take { font-size: 13px; color: var(--ink-2); }
@@ -912,17 +918,18 @@ function renderStudies() {
   const counts = d.studies.reduce((m, s) => { m[s.verdict] = (m[s.verdict] || 0) + 1; return m; }, {});
   const chip = (key, label, n) => '<button class="chip" data-stu="' + key + '" aria-pressed="' + (stuFilter === key) + '">' + esc(label) + ' <span class="muted">' + n + "</span></button>";
   const shown = d.studies.filter((s) => stuFilter === "all" || s.verdict === stuFilter);
+  const fold = (title, note, inner) => '<details class="fold"><summary><span class="grow">' + esc(title) + '</span><span class="muted" style="font-weight:400;font-size:13px">' + esc(note) + '</span></summary><div class="in">' + inner + "</div></details>";
   body.innerHTML =
-    '<p class="sub">' + esc(d.method) + "</p>"
-    + '<div class="panel stack"><h2>What you trade now</h2><dl>' + d.current.map((c) => "<dt>" + esc(c.label) + "</dt><dd>" + esc(c.text) + "</dd>").join("") + "</dl></div>"
-    + '<section class="stack"><div class="sec-head"><h2>How the strategy was chosen</h2><span class="count">' + d.path.length + ' steps</span></div><p class="sub muted" style="font-size:13px">Tap a step for the details.</p><ol class="steps">'
-    + d.path.map((p, i) => '<li><details class="step"><summary><span class="n">' + (i + 1) + '</span><span class="grow">' + esc(p.title) + '</span><span class="pill">' + esc(p.outcome) + '</span></summary><p class="sub">' + esc(p.text) + "</p></details></li>").join("") + "</ol></section>"
-    + '<section class="stack"><div class="sec-head"><h2>Every study</h2><span class="count">' + d.studies.length + '</span></div><div class="row">'
+    '<div class="stack" style="gap:8px">'
+    + fold("What you trade now", "the live rules", "<dl>" + d.current.map((c) => "<dt>" + esc(c.label) + "</dt><dd>" + esc(c.text) + "</dd>").join("") + "</dl>")
+    + fold("How the strategy was chosen", d.path.length + " steps", '<ol class="steps">' + d.path.map((p, i) => '<li><details class="step"><summary><span class="n">' + (i + 1) + '</span><span class="grow">' + esc(p.title)
+        + '</span><span class="pill">' + esc(p.outcome) + '</span></summary><p class="sub">' + esc(p.text) + "</p></details></li>").join("") + "</ol>")
+    + fold("How every idea is tested", "the method", '<p class="sub">' + esc(d.method) + "</p>") + "</div>"
+    + '<section class="stack" style="gap:8px"><div class="sec-head"><h2>Every study</h2><span class="count">' + d.studies.length + '</span></div><div class="row" style="gap:6px">'
     + chip("all", "All", d.studies.length) + Object.keys(VERDICT).filter((k) => counts[k]).map((k) => chip(k, VERDICT[k][1], counts[k])).join("") + "</div>"
-    + '<p class="sub muted" style="font-size:13px">Newest first. Tap a study to see what was tested and the numbers.</p>'
-    + '<div class="scrollbox fade"><div class="stack">' + shown.map((s) => { const v = VERDICT[s.verdict] || ["", s.verdict];
-      return '<details class="study"><summary><span class="grow"><span class="ttl">' + esc(s.title) + '</span><span class="take">' + esc(s.takeaway) + '</span></span><span class="pill ' + v[0] + '">' + esc(v[1]) + "</span></summary>"
-        + '<div class="in"><dl><dt>Question</dt><dd>' + esc(s.question) + "</dd><dt>Tested</dt><dd>" + esc(s.tested) + "</dd><dt>Result</dt><dd>" + esc(s.result) + "</dd></dl>"
+    + '<div class="scrollbox fade" style="max-height:58vh"><div class="stack" style="gap:6px">' + shown.map((s) => { const v = VERDICT[s.verdict] || ["", s.verdict];
+      return '<details class="study compact"><summary><span class="grow ttl">' + esc(s.title) + '</span><span class="pill ' + v[0] + '">' + esc(v[1]) + "</span></summary>"
+        + '<div class="in"><p><b>' + esc(s.takeaway) + "</b></p><dl><dt>Question</dt><dd>" + esc(s.question) + "</dd><dt>Tested</dt><dd>" + esc(s.tested) + "</dd><dt>Result</dt><dd>" + esc(s.result) + "</dd></dl>"
         + (s.rows ? '<div class="scroll"><table><thead><tr>' + s.cols.map((c, i) => "<th" + (i ? ' class="num"' : "") + ">" + esc(c) + "</th>").join("") + "</tr></thead><tbody>"
           + s.rows.map((r) => "<tr>" + r.map((c, i) => "<td" + (i ? ' class="num"' : ' style="white-space:normal;min-width:150px"') + ">" + esc(c) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>" : "")
         + '<p class="sub muted" style="font-size:12px">' + esc(s.area) + " · " + esc(s.script) + "</p></div></details>"; }).join("") + "</div></div></section>";
