@@ -171,6 +171,13 @@ details.study .take { font-size: 13px; color: var(--ink-2); }
 .fade { position: relative; }
 .fade::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--ground)); }
+.lvls { display: grid; gap: 0; font-size: 13px; }
+.lvls .lv { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--hair); }
+.lvls .lv:last-child { border-bottom: 0; }
+.lvls .px { font: 500 13px var(--mono); }
+.lvls .lv.res .px { color: var(--bad); } .lvls .lv.sup .px { color: var(--good); }
+.lvls .here { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 7px 8px; margin: 2px -8px; border-radius: 8px; background: var(--sunk); font-weight: 600; }
+.lvls .real { font-weight: 600; }
 .gauge { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
 .gauge > div { text-align: center; font: 500 11px var(--sans); color: var(--muted); }
 .gauge > div > i { display: block; height: 8px; border-radius: 3px; background: var(--hair); margin-bottom: 4px; }
@@ -485,6 +492,22 @@ function newsBlock(n) {
     + '<details class="news"><summary>News (' + heads.length + ")" + (e ? " · " + esc(e) : "") + '</summary><div class="in"><ul class="rules">'
     + (items || "<li>No headlines in the last 4 days.</li>") + '</ul><p class="sub muted" style="font-size:12px">For your judgement only. Headlines do not change the score.</p></div></details>';
 }
+function outlookSection(o) {
+  if (!o) return "";
+  const lean = o.lean, rg = o.range, green = lean.call === "green";
+  const near = (side) => o.levels.filter((x) => x.side === side).sort((a, b) => Math.abs(a.dist) - Math.abs(b.dist)).slice(0, 5).sort((a, b) => b.price - a.price);
+  const row = (x) => '<div class="lv ' + (x.side === "support" ? "sup" : "res") + '"><span class="px">' + usd(x.price) + '</span><span class="' + (x.edge >= 4 ? "real" : "") + '">' + esc(x.name)
+    + ' <span class="muted">' + pct(x.dist, 2) + '</span></span><span class="muted" title="Held to the close when touched, against an arbitrary price the same distance away">'
+    + (x.held == null ? "" : "held " + x.held + "% vs " + x.random + "%") + "</span></div>";
+  return '<section class="stack"><div class="sec-head"><h2>SPY outlook · ' + esc(niceDay(o.session)) + '</h2><span class="count ' + (green ? "on" : "") + '">' + (green ? "green lean" : "no lean") + "</span></div>"
+    + '<div class="card"><div class="top"><div class="name"><span class="sym">' + (green ? "LEAN GREEN" : "NO LEAN") + '</span><span class="muted" style="font-size:13px">about ' + lean.prob + "% chance of a higher close</span></div>"
+    + '<span class="pill ' + (green ? "good" : "") + '">' + (green ? "Green " + lean.prob + "%" : "Coin flip, slight green tilt") + "</span></div>"
+    + (lean.why.length ? '<p class="why"><b>Why:</b> ' + esc(lean.why.join("; ")) + ".</p>" : "") + '<p class="why">' + esc(lean.note) + "</p>"
+    + (rg ? '<div class="stats">' + stat("Expected low", usd(rg.low)) + stat("Expected high", usd(rg.high)) + stat("From " + o.ref_label, usd(o.ref)) + stat("Range", "±" + (rg.pct * 100).toFixed(2) + "%") + stat("Wide low", usd(rg.low2)) + stat("Wide high", usd(rg.high2))
+      + '</div><p class="why">' + esc(rg.note) + " Based on a VIX of " + rg.vix + ".</p>" : "")
+    + '<div class="lvls">' + near("resistance").map(row).join("") + '<div class="here"><span class="px">' + usd(o.ref) + "</span><span>" + esc(o.ref_label) + "</span></div>" + near("support").map(row).join("") + "</div>"
+    + '<p class="why muted">' + esc(o.tested) + " Levels in bold beat a random price by 4 points or more.</p></div></section>";
+}
 function fearGauge(f) {
   if (!f) return "";
   const range = (b, i, all) => (i ? all[i - 1].upto + (b.upto ? "-" + b.upto : "+") : "under " + b.upto);
@@ -637,6 +660,7 @@ function renderToday() {
     + '<div class="scrollbox fade"><div id="board" class="stack"></div></div>'
     + (r.skipped_earnings.length ? '<p class="sub">Skipped because they just reported earnings: ' + esc(r.skipped_earnings.join(", ")) + ".</p>" : "") + "</section>"
     + spreadSection(r.spread)
+    + outlookSection(r.spy_outlook)
     + '<section class="stack"><h2>The market today</h2><div class="card"><div class="top"><div class="name"><span class="sym">' + esc(r.regime.replace(" + ", " · ").toUpperCase()) + "</span></div>"
     + '<span class="pill">SPY ' + pct(r.spy_vs_ema) + ' vs its 200-day average</span><span class="pill">VIX ' + r.vix + "</span></div>"
     + fearGauge(r.fear) + '<p class="why">' + esc(r.regime_note) + "</p>"
