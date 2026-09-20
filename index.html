@@ -501,14 +501,22 @@ const rhLink = (sym, label) => '<a class="btn" target="_blank" rel="noopener" hr
 
 function newsBlock(n) {
   if (!n) return "";
-  const soon = n.earnings_in != null && n.earnings_in <= 5, heads = n.headlines || [];
+  const soon = n.earnings_in != null && n.earnings_in <= 5, heads = n.headlines || [], tone = n.tone;
   const e = n.next_earnings ? "next earnings " + niceDay(n.next_earnings) : "";
-  const items = heads.map((h) => "<li>" + (String(h.url || "").startsWith("https://") ? '<a target="_blank" rel="noopener" href="' + esc(h.url) + '">' + esc(h.title) + "</a>" : esc(h.title))
-    + ' <span class="muted">' + esc([h.source, h.when].filter(Boolean).join(" · ")) + "</span></li>").join("");
-  return ((n.flags || []).length ? '<div class="note warn">Headlines mention: <b>' + esc(n.flags.join(", ")) + "</b>. Read them before buying.</div>" : "")
+  const TAG = { good: ["good", "Good"], bad: ["bad", "Bad"], mixed: ["warn", "Mixed"], neutral: ["", "Neutral"] };
+  const items = heads.map((h) => { const t = TAG[h.tone] || TAG.neutral;
+    return '<li style="list-style:none;margin-left:-18px"><span class="pill ' + t[0] + '" style="font-size:11px;padding:1px 7px;margin-right:6px">' + t[1] + "</span>"
+      + (String(h.url || "").startsWith("https://") ? '<a target="_blank" rel="noopener" href="' + esc(h.url) + '">' + esc(h.title) + "</a>" : esc(h.title))
+      + ' <span class="muted">' + esc([h.about === false ? "not about this company" : "", h.source, h.when].filter(Boolean).join(" · ")) + "</span></li>"; }).join("");
+  const kind = !tone ? "" : /bad/.test(tone.label) ? "bad" : /good/.test(tone.label) ? "good" : "";
+  const toneLine = tone ? '<div class="row" style="gap:6px"><span class="pill ' + kind + '">News: ' + esc(tone.label) + "</span>"
+    + (tone.about ? '<span class="muted" style="font-size:12px">' + tone.good + " good, " + tone.bad + " bad, of " + plural(tone.about, "headline") + " about it</span>" : "") + "</div>" : "";
+  return toneLine
+    + ((n.flags || []).length ? '<div class="note warn">Headlines mention: <b>' + esc(n.flags.join(", ")) + "</b>. Read them before buying.</div>" : "")
     + (soon ? '<div class="note warn">Earnings in ' + plural(n.earnings_in, "session") + ", so the report could land while you hold it.</div>" : "")
     + '<details class="news"><summary>News (' + heads.length + ")" + (e ? " · " + esc(e) : "") + '</summary><div class="in"><ul class="rules">'
-    + (items || "<li>No headlines in the last 4 days.</li>") + '</ul><p class="sub muted" style="font-size:12px">For your judgement only. Headlines do not change the score.</p></div></details>';
+    + (items || "<li>No headlines in the last 4 days.</li>") + '</ul><p class="sub muted" style="font-size:12px">Good or bad is read from each headline\'s wording by simple rules, so it can be wrong; open the story if it matters. '
+    + "It tells you what happened, not what happens next: in testing, news at entry did not separate winning trades from losing ones, and a dip usually comes WITH bad news. It does not change the score.</p></div></details>";
 }
 function outlookSection(o) {
   if (!o) return "";
