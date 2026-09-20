@@ -177,6 +177,8 @@ details.study .take { font-size: 13px; color: var(--ink-2); }
 .fade { position: relative; }
 .fade::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--ground)); }
+.sp-form { display: grid; gap: 10px; }
+.sp-form .fields { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 .lvls { display: grid; gap: 0; font-size: 13px; }
 .lvls .lv { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--hair); }
 .lvls .lv:last-child { border-bottom: 0; }
@@ -344,6 +346,7 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
         <div class="fields">
           <label>Account value ($) <input id="acctValue" type="number" step="1" min="0" inputmode="decimal" required></label>
           <label>Amount per trade ($) <input id="acctDollars" type="number" step="1" min="0" inputmode="decimal"></label>
+          <label>Most spreads open at once <input id="acctSpreads" type="number" step="1" min="0" max="9" inputmode="numeric"></label>
         </div>
         <p class="sub">The screener sizes each buy from the account value. Set a smaller amount per trade if you want to
           start below the plan, for example $10 to $20.</p>
@@ -393,7 +396,7 @@ const niceDay = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US"
 
 let cfg = {};
 try { cfg = JSON.parse(localStorage.getItem("dipdesk") || "{}"); } catch (e) { cfg = {}; }
-const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, equity: [], settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
+const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, equity: [], spreads: [], settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
 const canTrade = () => !!(cfg.tradeToken && !LOCAL);
 
 function toast(msg) {
@@ -456,17 +459,26 @@ async function updateTrades(mutate, message) {
   }
 }
 
+async function updateSpreads(mutate, message) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const cur = await getJSON("data/spreads.json", []);
+    const next = mutate((cur.data || []).slice());
+    try { await putJSON("data/spreads.json", next, cur.sha, message); state.spreads = next; return; }
+    catch (e) { if (!e.conflict || attempt) throw e; }
+  }
+}
+
 /* ---------------- load ---------------- */
 async function loadAll() {
   if (!cfg.token && !LOCAL) { showConnect(true); return; }
   $("conn").textContent = "loading…";
   try {
-    const [screen, trades, signals, review, about, settings, account, studies, equity] = await Promise.all([
+    const [screen, trades, signals, review, about, settings, account, studies, equity, spreads] = await Promise.all([
       getJSON("data/screen_latest.json", null), getJSON("data/trades.json", []),
       getJSON("data/signals.json", []), getJSON("data/review.json", null),
-      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null), getJSON("data/equity.json", [])]);
+      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null), getJSON("data/equity.json", []), getJSON("data/spreads.json", [])]);
     Object.assign(state, { screen: screen.data, trades: trades.data, tradesSha: trades.sha, signals: signals.data,
-      review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], settings: settings.data, settingsSha: settings.sha });
+      review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], spreads: spreads.data || [], settings: settings.data, settingsSha: settings.sha });
     $("conn").textContent = LOCAL ? "local preview" : "connected";
     showConnect(false); renderAll();
   } catch (e) { $("conn").textContent = "not connected"; toast(e.message); showConnect(true); }
@@ -636,6 +648,8 @@ function renderHero() {
   $("hero").innerHTML = '<div class="when">' + esc(s.when) + '</div><div class="say">' + esc(s.say) + '</div><p class="sub">' + esc(s.sub) + "</p>"
     + '<div class="row"><div class="facts">' + (status ? '<span class="pill ' + status[0] + '">' + esc(status[1]) + "</span>" : "")
     + (r ? '<span class="pill">Updated ' + esc(s.fresh ? r.run_at.slice(11) : niceDay(r.as_of)) + "</span>" : "")
+    + (r && openSpreads().some((x) => x.expiry <= nyDate()) ? '<span class="pill warn">A spread expires today or is past expiry</span>' : "")
+    + (r && r.spread && openSpreads().some((x) => r.spread.price / x.short - 1 < 0.01) ? '<span class="pill bad">A spread is under 1% from its strike</span>' : "")
     + (r && r.fear ? '<span class="pill ' + ["good", "", "warn", "bad"][r.fear.index] + '">Fear: ' + esc(r.fear.level) + " · VIX " + r.fear.vix + "</span>" : "") + "</div>"
     + '<button class="' + (s.tone === "warn" ? "primary" : "") + ' small spacer" id="runNow">Run now</button></div>';
   $("runNow").addEventListener("click", runNow);
@@ -681,6 +695,7 @@ function renderToday() {
     + '<p class="sub muted">Data run ' + esc(r.run_at) + " across " + r.symbols + " symbols. Orders are only ever placed when you press Buy or Sell and then confirm.</p></div></details>";
   try { $("boardSort").value = localStorage.getItem("dipdesk-sort") || "confidence"; $("boardHigh").checked = localStorage.getItem("dipdesk-high") === "1"; } catch (e) { /* ignore */ }
   $("boardSort").addEventListener("change", renderBoard); $("boardHigh").addEventListener("change", renderBoard);
+  wireSpreadBook();
   renderBoard();
 }
 
@@ -714,13 +729,68 @@ function renderBoard() {
         : rhLink(b.sym) + '<button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log the buy</button>') + "</div></div>").join("");
 }
 
+const maxSpreads = () => state.settings.max_spreads ?? 3;
+const openSpreads = () => (state.spreads || []).filter((x) => !x.closed);
+const spreadPnl = (x) => (x.credit - (x.close_cost || 0)) * 100 * (x.contracts || 1);
+function roomNote(signal) {
+  if (!signal) return "";
+  const open = openSpreads(), max = maxSpreads(), room = max - open.length;
+  if (room > 0) return '<div class="note good">You have room: ' + open.length + " of " + max + ' spreads open. Enter in the last 20 minutes of the day, then log it below.</div>';
+  const next = open.map((x) => x.expiry).sort()[0];
+  return '<div class="note bad"><b>Skip this one.</b> You already have ' + open.length + " of " + max + " spreads open. The next slot frees when the " + esc(niceDay(next)) + " spread expires.</div>";
+}
+function spreadBook(sp) {
+  const today = nyDate(), spy = sp.price, open = openSpreads().sort((a, b) => a.expiry.localeCompare(b.expiry)), max = maxSpreads();
+  const closed = (state.spreads || []).filter((x) => x.closed);
+  const cards = open.map((x) => {
+    const days = Math.round((new Date(x.expiry + "T12:00:00Z") - new Date(today + "T12:00:00Z")) / 864e5), cushion = spy / x.short - 1;
+    const pill = cushion < 0 ? ["bad", "Below the short strike"] : cushion < 0.01 ? ["bad", "Danger: under 1% away"] : cushion < 0.02 ? ["warn", "Watch: under 2% away"] : ["good", "Safe"];
+    let act;
+    if (days < 0) act = "<b>Expired.</b> " + (cushion >= 0 ? "SPY finished above " + x.short + ", so it should have expired worthless: you keep the credit. Press Expired worthless." : "SPY finished below the short strike. Check Robinhood for what it cost, then press Log close.");
+    else if (days === 0) act = "<b>Expires today.</b> " + (cushion >= 0.005 ? "SPY is comfortably above " + x.short + ". Let it expire; nothing to do." : "SPY is at or below the short strike. Close it in Robinhood before 3:30pm so you are not assigned shares, then press Log close.");
+    else act = "<b>Hold to expiry</b> (" + plural(days, "day") + " left). Closing early tested worse. The only reason to act before expiry day is if you want the slot back.";
+    return '<div class="order"><div class="line"><span class="big">SPY ' + x.short + " / " + x.long + ' put</span><span class="pill ' + pill[0] + '">' + pill[1] + "</span></div>"
+      + '<div class="stats">' + stat("Expires", niceDay(x.expiry)) + stat("Credit", usd(x.credit * 100 * (x.contracts || 1), 0)) + stat("Most you can lose", usd((x.short - x.long - x.credit) * 100 * (x.contracts || 1), 0))
+      + stat("SPY now", usd(spy)) + stat("Cushion", pct(cushion, 1), cushion < 0.02 ? "down" : "") + stat("Rule", x.rule || "-") + "</div>"
+      + '<div class="why">' + act + "</div>"
+      + '<div class="acts"><button class="small" data-spexp="' + esc(x.id) + '">Expired worthless</button><button class="small" data-spclose="' + esc(x.id) + '">Log close</button>'
+      + '<button class="small ghost danger" data-spdel="' + esc(x.id) + '" style="flex:0 0 auto">Delete</button></div></div>';
+  }).join("");
+  const won = closed.filter((x) => spreadPnl(x) > 0).length, total = closed.reduce((a, x) => a + spreadPnl(x), 0);
+  const rules = [["5% out, about 5 weeks", sp.short_strike, sp.long_strike, sp.expiry]].concat((Array.isArray(sp.aggressive) ? sp.aggressive : []).map((g) => [g.name, g.short_strike, g.long_strike, g.expiry]));
+  return '<div class="sec-head"><h3 style="font-size:15px">Your open spreads</h3><span class="count ' + (open.length ? "on" : "") + '">' + open.length + " of " + max + "</span></div>"
+    + (cards || '<p class="why">None open. When a signal below fires and you enter it in Robinhood, log it here so the dashboard can track the slot and tell you when it is done.</p>')
+    + (closed.length ? '<p class="why">Closed so far: ' + closed.length + ", won " + Math.round(100 * won / closed.length) + "%, total <b class=\"" + cls(total) + '">' + signed(total) + "</b>.</p>" : "")
+    + '<details class="news"><summary>Log a spread I opened</summary><div class="in"><form class="sp-form" id="spForm"><div class="fields">'
+    + '<label>Which rule <select id="spRule">' + rules.map((r, i) => '<option value="' + i + '">' + esc(r[0]) + "</option>").join("") + '<option value="x">Other</option></select></label>'
+    + '<label>Short put strike <input id="spShort" type="number" step="0.5" required></label><label>Long put strike <input id="spLong" type="number" step="0.5" required></label>'
+    + '<label>Expiry <input id="spExp" type="date" required></label><label>Credit per share ($) <input id="spCredit" type="number" step="0.01" min="0" placeholder="0.16" required></label>'
+    + '<label>Contracts <input id="spN" type="number" step="1" min="1" value="1" required></label><label>Opened <input id="spDate" type="date" required></label></div>'
+    + '<p class="sub muted" style="font-size:12px">Credit per share is the price Robinhood shows for the spread, for example 0.16 means $16 a contract.</p>'
+    + '<button class="primary small" type="submit">Log spread</button></form></div></details>'
+    + '<script type="application/json" id="spRules">' + JSON.stringify(rules).replace(/</g, "\\u003c") + "</" + "script>";
+}
+function wireSpreadBook() {
+  const f = $("spForm"); if (!f) return;
+  const rules = JSON.parse($("spRules").textContent);
+  const fill = () => { const r = rules[$("spRule").value]; if (r) { $("spShort").value = r[1]; $("spLong").value = r[2]; $("spExp").value = r[3]; } };
+  $("spRule").addEventListener("change", fill); fill(); $("spDate").value = nyDate();
+  f.addEventListener("submit", async (ev) => { ev.preventDefault();
+    const r = rules[$("spRule").value];
+    const x = { id: "SPY-" + $("spShort").value + "-" + $("spExp").value + "-" + Date.now().toString(36), symbol: "SPY", rule: r ? r[0] : "other", short: +$("spShort").value, long: +$("spLong").value,
+      expiry: $("spExp").value, opened: $("spDate").value, credit: +$("spCredit").value, contracts: +$("spN").value || 1, closed: null, close_cost: null,
+      score: state.screen && state.screen.spread ? state.screen.spread.score : null, vix: state.screen ? state.screen.vix : null };
+    if (!(x.short > x.long) || !(x.credit > 0 && x.credit < x.short - x.long)) { toast("Check the strikes and the credit: the credit must be less than the width."); return; }
+    await save(() => updateSpreads((xs) => xs.concat([x]), "spread opened " + x.short + "/" + x.long), "Spread logged. It now counts toward your limit.");
+  });
+}
 function aggressiveSpread(sp) {
   const list = Array.isArray(sp.aggressive) ? sp.aggressive : [];
   if (!list.length) return "";
   return '<h3 style="font-size:14px;margin-top:4px">Aggressive spreads, 2% out</h3>' + list.map((g) =>
     '<div class="order' + (g.signal ? "" : " no") + '"><div class="line"><span class="big">' + esc(g.name) + '</span><span class="pill ' + (g.signal ? "warn" : "") + '">' + (g.signal ? "Signal" : "No signal") + "</span></div>"
     + '<ul class="checks">' + g.checks.map((c) => '<li class="' + (c.met ? "yes" : "no") + '"><span class="mark">' + (c.met ? "✓" : "·") + "</span><span>" + esc(c.label) + ' <span class="muted">· ' + esc(c.detail) + "</span></span></li>").join("") + "</ul>"
-    + (g.signal ? '<div class="note warn">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $"
+    + (g.signal ? roomNote(true) + '<div class="note warn">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $"
         + sp.max_loss + ". Up to " + g.max_open + " open at once" + (g.min_gap_days > 1 ? ", at least " + g.min_gap_days + " days apart" : ", one new one a day at most") + ". Enter in the last 20 minutes of the day.</div>"
       : '<div class="why">Would be the ' + g.short_strike + " / " + g.long_strike + " put spread expiring " + esc(niceDay(g.expiry)) + ".</div>")
     + '<p class="why muted">' + esc(g.note) + "</p></div>").join("");
@@ -731,12 +801,13 @@ function spreadSection(sp) {
   const checks = '<ul class="checks">' + sp.factors.map((f) => '<li class="' + (f.met ? "yes" : "no") + '"><span class="mark">' + (f.met ? "✓" : "·") + "</span><span>" + esc(f.label)
     + ' <span class="muted">· ' + esc(f.detail) + "</span></span></li>").join("") + "</ul>";
   const what = sp.signal
-    ? '<div class="note good"><b>Signal.</b> Sell the ' + sp.short_strike + " put and buy the " + sp.long_strike + " put, expiring " + esc(niceDay(sp.expiry)) + " (" + sp.days + " days), one contract. Most you can lose is about $"
+    ? roomNote(true) + '<div class="note good"><b>Signal.</b> Sell the ' + sp.short_strike + " put and buy the " + sp.long_strike + " put, expiring " + esc(niceDay(sp.expiry)) + " (" + sp.days + " days), one contract. Most you can lose is about $"
       + sp.max_loss + ". Skip it if the credit is under $" + sp.min_credit.toFixed(2) + " a share, and keep about $100 of cash free as collateral."
       + (sp.max_open ? " Up to " + sp.max_open + " spreads open at once, at least " + sp.min_gap_days + " days apart." : "") + "</div>"
       + '<div class="acts"><a class="btn" target="_blank" rel="noopener" href="https://robinhood.com/options/chains/' + esc(sp.symbol) + '">Open ' + esc(sp.symbol) + " options in Robinhood</a></div>"
     : '<p class="why">No trade today. It needs ' + sp.min_score + " of 6; this spread only had an edge when fear was elevated. If it fired now it would be the " + sp.short_strike + " / " + sp.long_strike + " put spread expiring " + esc(niceDay(sp.expiry)) + ".</p>";
   return '<section class="stack"><div class="sec-head"><h2>' + esc(sp.symbol) + ' put credit spread</h2><span class="count ' + (sp.signal ? "on" : "") + '">' + (sp.signal ? "signal" : "no signal") + "</span></div>"
+    + '<div class="card">' + spreadBook(sp) + "</div>"
     + '<div class="card"><div class="top"><div class="name"><span class="sym">' + esc(sp.symbol) + '</span><span class="muted" style="font-size:13px">' + usd(sp.price) + "</span></div>" + meter(sp.score, level) + "</div>"
     + checks + what + '<p class="why muted">' + esc(sp.note) + "</p>" + aggressiveSpread(sp) + "</div></section>";
 }
@@ -800,7 +871,7 @@ function renderPositions() {
   if (!$("buyDate").value) $("buyDate").value = nyDate();
   if (!$("sellDate").value) $("sellDate").value = nyDate();
   if (!$("buyDollars").value) $("buyDollars").value = state.settings.default_dollars || 67;
-  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? "";
+  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? ""; $("acctSpreads").value = state.settings.max_spreads ?? 3;
 }
 async function syncNow() {
   const b = $("syncNow"); b.disabled = true; b.textContent = "Syncing…";
@@ -987,11 +1058,16 @@ $("disconnectBtn").addEventListener("click", () => { cfg = {}; try { localStorag
 $("buyForm").addEventListener("submit", submitBuy);
 $("sellForm").addEventListener("submit", submitSell);
 $("acctForm").addEventListener("submit", async (ev) => { ev.preventDefault();
-  const next = { account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null };
+  const next = { ...state.settings, account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null, max_spreads: +$("acctSpreads").value || 3 };
   try { const cur = await getJSON("data/settings.json", {}); state.settingsSha = await putJSON("data/settings.json", next, cur.sha, "settings"); state.settings = next; renderToday(); toast("Saved. The next screener run uses it."); }
   catch (e) { toast(e.message); } });
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.spexp && confirm("Mark this spread as expired worthless (you keep the whole credit)?"))
+    save(() => updateSpreads((xs) => { const x = xs.find((y) => y.id === b.dataset.spexp); if (x) { x.closed = nyDate(); x.close_cost = 0; } return xs; }, "spread expired"), "Logged. The slot is free.");
+  if (b.dataset.spclose) { const v = prompt("What did it cost to close, per share? (for example 0.45; enter 1.00 for a full loss on a $1-wide spread)");
+    if (v !== null && !isNaN(parseFloat(v))) save(() => updateSpreads((xs) => { const x = xs.find((y) => y.id === b.dataset.spclose); if (x) { x.closed = nyDate(); x.close_cost = parseFloat(v); } return xs; }, "spread closed"), "Logged. The slot is free."); }
+  if (b.dataset.spdel && confirm("Delete this spread from the dashboard?")) save(() => updateSpreads((xs) => xs.filter((y) => y.id !== b.dataset.spdel), "spread deleted"), "Deleted.");
   if (b.dataset.tbuy) startTrade([{ side: "buy", symbol: b.dataset.tbuy, dollars: +b.dataset.dollars }]);
   if (b.dataset.tsell) startTrade([{ side: "sell", symbol: b.dataset.tsell }]);
   if (b.dataset.buy || b.dataset.sell) $("manual").open = true;
