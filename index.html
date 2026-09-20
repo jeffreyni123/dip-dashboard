@@ -765,7 +765,8 @@ function spreadBook(sp) {
       + '<button class="small ghost danger" data-spdel="' + esc(x.id) + '" style="flex:0 0 auto">Delete</button></div></div>';
   }).join("");
   const won = closed.filter((x) => spreadPnl(x) > 0).length, total = closed.reduce((a, x) => a + spreadPnl(x), 0);
-  const rules = [["5% out, about 5 weeks", sp.short_strike, sp.long_strike, sp.expiry]].concat((Array.isArray(sp.aggressive) ? sp.aggressive : []).map((g) => [g.name, g.short_strike, g.long_strike, g.expiry]));
+  const rules = [["5% out, about 5 weeks", sp.short_strike, sp.long_strike, sp.expiry]].concat((Array.isArray(sp.aggressive) ? sp.aggressive : []).flatMap((g) => [[g.name, g.short_strike, g.long_strike, g.expiry]].concat(
+      g.alt ? [[(g.alt.distance * 100).toFixed(0) + "% out, " + g.name.split(", ")[1], g.alt.short_strike, g.alt.long_strike, g.expiry]] : [])));
   return '<div class="sec-head"><h3 style="font-size:15px">Your open spreads</h3><span class="count ' + (open.length ? "on" : "") + '">' + open.length + " of " + max + "</span></div>"
     + (cards || '<p class="why">None open. When a signal below fires and you enter it in Robinhood, log it here so the dashboard can track the slot and tell you when it is done.</p>')
     + (closed.length ? '<p class="why">Closed so far: ' + closed.length + ", won " + Math.round(100 * won / closed.length) + "%, total <b class=\"" + cls(total) + '">' + signed(total) + "</b>.</p>" : "")
@@ -801,6 +802,7 @@ function aggressiveSpread(sp) {
     + (g.signal ? roomNote(true) + '<div class="note warn">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $"
         + sp.max_loss + ". Up to " + g.max_open + " open at once" + (g.min_gap_days > 1 ? ", at least " + g.min_gap_days + " days apart" : ", one new one a day at most") + ". Enter in the last 20 minutes of the day.</div>"
       : '<div class="why">Would be the ' + g.short_strike + " / " + g.long_strike + " put spread expiring " + esc(niceDay(g.expiry)) + ".</div>")
+    + (g.alt ? '<div class="note"><b>Or ' + (g.alt.distance * 100).toFixed(0) + "% out: the " + g.alt.short_strike + " / " + g.alt.long_strike + " put spread, same expiry.</b> " + esc(g.alt.note) + "</div>" : "")
     + '<p class="why muted">' + esc(g.note) + "</p></div>").join("");
 }
 function spreadSection(sp) {
