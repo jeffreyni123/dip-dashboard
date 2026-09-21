@@ -175,6 +175,7 @@ details.study .take { font-size: 13px; color: var(--ink-2); }
   scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
 .scrollbox > .stack { padding-bottom: 4px; }
 .fade { position: relative; }
+.fade:not(.scrolls)::after { display: none; }
 .fade::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--ground)); }
 .sp-form { display: grid; gap: 10px; }
@@ -480,7 +481,7 @@ async function loadAll() {
     Object.assign(state, { screen: screen.data, trades: trades.data, tradesSha: trades.sha, signals: signals.data,
       review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], spreads: spreads.data || [], settings: settings.data, settingsSha: settings.sha });
     $("conn").textContent = LOCAL ? "local preview" : "connected";
-    showConnect(false); renderAll();
+    showConnect(false); renderAll(); setTimeout(autoRun, 800);
   } catch (e) { $("conn").textContent = "not connected"; toast(e.message); showConnect(true); }
 }
 function showConnect(on) {
@@ -681,8 +682,8 @@ function renderToday() {
 
   body.innerHTML =
     '<section class="stack"><div class="sec-head"><h2>' + (fresh ? "Sell at tomorrow's open" : "Sell at the open") + '</h2><span class="count ' + (r.sells.length ? "on" : "") + '">' + r.sells.length + "</span></div>" + sells + holding + unknown + "</section>"
-    + '<section class="stack"><div class="sec-head"><h2>Buy before the close</h2><span class="count ' + (r.buys.length ? "on" : "") + '">' + r.buys.length + ((r.extra_buys || []).length ? " + " + r.extra_buys.length + " more" : "") + "</span>"
-    + '<div class="tools spacer" id="boardTools"' + (r.buys.length + (r.extra_buys || []).length > 1 ? "" : " hidden") + '><label class="check" style="font-size:13px"><input type="checkbox" id="boardHigh"> High confidence only</label>'
+    + '<section class="stack"><div class="sec-head"><h2>Buy before the close</h2><span class="count ' + (r.buys.length ? "on" : "") + '">' + r.buys.length + ((r.extra_buys || []).length ? " + " + r.extra_buys.length + " more" : "") + ((r.low_buys || []).length ? " · " + r.low_buys.length + " low score" : "") + "</span>"
+    + '<div class="tools spacer" id="boardTools"' + (r.buys.length + (r.extra_buys || []).length + (r.low_buys || []).length > 1 ? "" : " hidden") + '><label class="check" style="font-size:13px"><input type="checkbox" id="boardHigh"> High confidence only</label>'
     + '<label style="display:flex;gap:6px;align-items:center;font-size:13px">Sort <select id="boardSort"><option value="confidence">Confidence</option><option value="rank">Strategy rank</option><option value="drop">Biggest drop</option></select></label></div></div>'
     + (fresh ? "" : '<div class="note warn">These were for the close on ' + esc(niceDay(r.as_of)) + ". They are no longer valid.</div>")
     + '<div class="scrollbox fade"><div id="board" class="stack"></div></div>'
@@ -707,22 +708,27 @@ function renderToday() {
   renderBoard();
 }
 
+function markScrollers() {
+  document.querySelectorAll(".scrollbox.fade").forEach((b) => b.classList.toggle("scrolls", b.scrollHeight > b.clientHeight + 4));
+}
 function renderBoard() {
   const r = state.screen, el = $("board"); if (!r || !el) return;
   const sort = $("boardSort").value, highOnly = $("boardHigh").checked, fresh = r.as_of === nyDate();
   try { localStorage.setItem("dipdesk-sort", sort); localStorage.setItem("dipdesk-high", $("boardHigh").checked ? "1" : "0"); } catch (e) { /* ignore */ }
   const dollars = state.settings.default_dollars || (r.buys[0] && r.buys[0].dollars);
   const held = Object.fromEntries(state.trades.filter((t) => !t.exit_date).map((t) => [t.sym, 1]));
-  let items = r.buys.concat(r.extra_buys || []).map((b) => ({ ...b, conf: b.confidence ?? 0, level: b.confidence_level || "low", room: b.room !== false }));
+  let items = r.buys.concat(r.extra_buys || [], r.low_buys || []).map((b) => ({ ...b, conf: b.confidence ?? 0, level: b.confidence_level || "low", room: b.room !== false || !!b.low }));
   if (highOnly) items = items.filter((b) => b.level === "high");
-  items.sort(sort === "confidence" ? (a, b) => (b.level === "high") - (a.level === "high") || b.conf / (b.confidence_max || 6) - a.conf / (a.confidence_max || 6) || a.rank - b.rank : sort === "drop" ? (a, b) => a.ret_5d - b.ret_5d : (a, b) => a.rank - b.rank);
+  const lowLast = (a, b) => (a.low ? 1 : 0) - (b.low ? 1 : 0);
+  items.sort(sort === "confidence" ? (a, b) => lowLast(a, b) || (b.level === "high") - (a.level === "high") || b.conf / (b.confidence_max || 6) - a.conf / (a.confidence_max || 6) || a.rank - b.rank : sort === "drop" ? (a, b) => lowLast(a, b) || a.ret_5d - b.ret_5d : (a, b) => lowLast(a, b) || a.rank - b.rank);
   if (!items.length) {
-    const n = r.buys.length + (r.extra_buys || []).length;
+    const n = r.buys.length + (r.extra_buys || []).length + (r.low_buys || []).length;
     el.innerHTML = '<p class="sub">' + (n ? "No high-confidence picks today. Untick the filter to see the other " + plural(n, "pick") + "."
-      : "Nothing qualifies today. That's common, and no trade is the right move.") + "</p>"; return;
+      : (r.status === "preliminary" ? "Nothing qualifies right now. This is a preview from " + r.run_at.slice(11) + "; picks are judged at the close, and the list usually fills in during the afternoon."
+        : "Nothing qualifies today. That's common, and no trade is the right move.")) + "</p>"; markScrollers(); return;
   }
   el.innerHTML = items.map((b) => '<div class="card' + (fresh ? "" : " dim") + '"><div class="top"><div class="name"><span class="sym">' + esc(b.sym) + '</span><span class="muted" style="font-size:13px">' + esc(b.sector || "") + "</span>"
-    + (b.kind === "momentum" ? '<span class="pill">Momentum dip</span>' : "") + (b.room ? "" : '<span class="pill warn">Past the daily limit</span>') + "</div>"
+    + (b.kind === "momentum" ? '<span class="pill">Momentum dip</span>' : "") + (b.low ? '<span class="pill">Low score: the plan skips it</span>' : b.room ? "" : '<span class="pill warn">Past the daily limit</span>') + "</div>"
     + (b.confidence == null ? "" : meter(b.conf, b.level, b.confidence_max || 6)) + "</div>"
     + '<div class="stats">' + stat("Price", usd(b.price)) + stat("5-day", pct(b.ret_5d), cls(b.ret_5d))
     + (b.kind === "momentum" ? stat("6-month", pct(b.mom_6m, 0), cls(b.mom_6m)) : stat("Gap today", pct(b.gap), "down"))
@@ -730,11 +736,13 @@ function renderBoard() {
     + '<div class="why">' + ((b.confidence_reasons || []).length ? "<b>Why it scores:</b> " + esc(b.confidence_reasons.join("; ")) + "."
       : (b.confidence == null ? "" : "None of the " + (b.confidence_max || 6) + " confidence checks is met. Picks like this had almost no edge in testing."))
     + (b.kind === "momentum" ? " <span class=\"muted\">A strong stock (top fifth over 6 months) having a bad couple of days; scored on its own 0-4 scale.</span>" : "")
+    + (b.low ? ' <span class="muted">Shown so you can see every pick. In testing, skipping scores of 0-1 made more (24% and 31% a year against 20% and 22%) with fewer trades. The Buy button still works if you want it.</span>' : "")
     + (b.room ? "" : " <span class=\"muted\">The plan caps new buys at " + (r.room != null ? r.room : 5) + " today; this one qualified but is past the cap.</span>") + "</div>"
     + newsBlock(b.news)
     + '<div class="acts">' + (canTrade() && fresh
         ? '<button class="small buy" data-tbuy="' + esc(b.sym) + '" data-dollars="' + (dollars || b.dollars) + '"' + (held[b.sym] ? " disabled" : "") + ">" + (held[b.sym] ? "Already bought" : "Buy " + usd(dollars || b.dollars, 0)) + "</button>" + rhLink(b.sym, "View in Robinhood")
         : rhLink(b.sym) + '<button class="small" data-buy="' + esc(b.sym) + '" data-price="' + b.price + '" data-dollars="' + (dollars || b.dollars) + '">Log the buy</button>') + "</div></div>").join("");
+  markScrollers();
 }
 
 const maxSpreads = () => state.settings.max_spreads ?? 3;
@@ -1016,6 +1024,7 @@ function renderStudies() {
         + (s.rows ? '<div class="scroll"><table><thead><tr>' + s.cols.map((c, i) => "<th" + (i ? ' class="num"' : "") + ">" + esc(c) + "</th>").join("") + "</tr></thead><tbody>"
           + s.rows.map((r) => "<tr>" + r.map((c, i) => "<td" + (i ? ' class="num"' : ' style="white-space:normal;min-width:150px"') + ">" + esc(c) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>" : "")
         + '<p class="sub muted" style="font-size:12px">' + esc(s.area) + " · " + esc(s.script) + "</p></div></details>"; }).join("") + "</div></div></section>";
+  markScrollers();
   body.querySelectorAll("[data-stu]").forEach((b) => b.addEventListener("click", () => { stuFilter = b.dataset.stu; renderStudies(); }));
 }
 
@@ -1085,6 +1094,15 @@ document.addEventListener("click", (ev) => {
   if (b.dataset.sell) { showTab("positions"); $("sellSym").value = b.dataset.sell; $("sellPrice").value = b.dataset.price; $("sellDate").value = nyDate(); $("sellForm").scrollIntoView({ block: "center" }); $("sellPrice").focus(); }
   if (b.dataset.del && confirm("Delete this trade from the journal?")) save(() => updateTrades((ts) => ts.filter((t) => t.id !== b.dataset.del), "delete " + b.dataset.del), "Deleted.");
 });
+let autoRan = "";
+function autoRun() {
+  const r = state.screen, c = nyClock(), key = nyDate() + (c.mins >= 925 ? "pm" : "am");
+  if (!r || LOCAL || !cfg.token || !c.weekday || autoRan === key || ($("runNow") || {}).disabled) return;
+  const fresh = r.as_of === nyDate();
+  const needFinal = c.mins >= 925 && c.mins < 958 && !(fresh && r.status === "final");
+  const needMorning = c.mins >= 575 && c.mins < 925 && !fresh;
+  if (needFinal || needMorning) { autoRan = key; toast(needFinal ? "The list isn't final yet, so I started a run for you." : "No list yet today, so I started a run for you."); runNow(); }
+}
 setInterval(() => { if (state.screen && !$("p-today").hidden && !($("runNow") || {}).disabled) renderHero(); }, 30000);   // keep the countdown honest
 let startTab = "today"; try { startTab = localStorage.getItem("dipdesk-tab") || "today"; } catch (e) { /* ignore */ }
 if (location.hash.slice(1)) startTab = location.hash.slice(1);
