@@ -252,6 +252,7 @@ button.buy { background: var(--good); border-color: var(--good); color: var(--su
 button.sell { background: var(--warn); border-color: var(--warn); color: var(--surface); font-weight: 600; }
 @media (prefers-reduced-motion: no-preference) { .progress > i { transition: width .3s ease; } }
 .rangebar{position:relative;height:34px;margin:6px 0 2px}.rangebar .wide{position:absolute;left:0;right:0;top:12px;height:8px;border-radius:4px;background:var(--hair)}.rangebar .likely{position:absolute;top:10px;height:12px;border-radius:6px;background:var(--series);opacity:.55}.rangebar .mark{position:absolute;top:6px;width:3px;height:20px;margin-left:-1px;border-radius:2px;background:var(--ink)}.rangebar .lo,.rangebar .hi{position:absolute;top:24px;font-size:11px;color:var(--muted)}.rangebar .hi{right:0}
+.info{position:relative;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--axis);color:var(--muted);font:600 11px/1 system-ui,sans-serif;cursor:help;vertical-align:middle;margin-left:4px;outline:none}.info:hover,.info:focus{color:var(--ink);border-color:var(--ink)}.info .tip{display:none;position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);z-index:5;width:min(320px,80vw);padding:10px 12px;border-radius:8px;background:var(--ink);color:var(--ground);font:400 13px/1.45 inherit;text-align:left;white-space:normal;box-shadow:0 6px 24px rgba(0,0,0,.18)}.info:hover .tip,.info:focus .tip,.info:focus-within .tip{display:block}.sec-head .info{margin-left:-2px}
 </style>
 </head>
 <body>
@@ -542,14 +543,15 @@ function outlookSection(o) {
   const call = green ? "Leans green" : "Coin flip";
   const callWhy = green ? "About " + lean.prob + " in 100 days like this closed higher." : "SPY closes higher on about " + lean.prob + " days in 100 anyway; nothing today makes that more or less likely.";
   const width = rg ? rg.high2 - rg.low2 : 0, pos = (v) => (width ? Math.min(100, Math.max(0, ((v - rg.low2) / width) * 100)) : 50);
-  return '<section class="stack"><div class="sec-head"><h2>SPY today · ' + esc(niceDay(o.session)) + '</h2><span class="count ' + (green ? "on" : "") + '">' + esc(call) + "</span></div>"
+  return '<section class="stack"><div class="sec-head"><h2>SPY today · ' + esc(niceDay(o.session)) + '</h2>' + info("A morning read on SPY: the odds of a higher close, the range the day most likely stays inside (from the VIX), and the price lines traders watch. Built from SPY's history since 2010; the lean only shows when a tested condition beat the usual 54% odds.")
+    + '<span class="count ' + (green ? "on" : "") + '">' + esc(call) + "</span></div>"
     + '<div class="card"><div class="top"><div class="name"><span class="sym">' + esc(call.toUpperCase()) + '</span></div><span class="pill ' + (green ? "good" : "") + '">' + (green ? "Green " + lean.prob + "%" : "About " + lean.prob + "% green, like any day") + "</span></div>"
     + '<p class="why">' + esc(callWhy) + (lean.why.length ? " Why: " + esc(lean.why.join("; ")) + "." : "") + "</p>"
     + (rg ? '<p class="why"><b>Most likely between ' + usd(rg.low) + " and " + usd(rg.high) + " today.</b> On 78 days in 100 the whole day stays inside that. Almost never outside " + usd(rg.low2) + " to " + usd(rg.high2) + " (98 in 100). From " + esc(o.ref_label) + ", " + usd(o.ref) + ", with the VIX at " + rg.vix + ".</p>"
       + '<div class="rangebar" role="img" aria-label="Expected range ' + usd(rg.low) + " to " + usd(rg.high) + '"><div class="wide"></div><div class="likely" style="left:' + pos(rg.low).toFixed(1) + "%;width:" + (pos(rg.high) - pos(rg.low)).toFixed(1) + '%"></div><div class="mark" style="left:' + pos(o.ref).toFixed(1) + '%"></div>'
       + '<span class="lo">' + usd(rg.low2, 0) + '</span><span class="hi">' + usd(rg.high2, 0) + "</span></div>" : "")
     + '<details><summary>Price lines traders watch nearby</summary><div class="in">'
-    + '<p class="why">Above and below the current price, the nearest lines from the usual playbooks. We tested each kind over years of SPY days: does the price stop there more often than at a random price the same distance away? Mostly no. Treat them as reference points, not predictions. Hover a name for what it is.</p>'
+    + '<p class="why">The nearest lines above and below, from the usual playbooks. ' + info("We tested each kind over years of SPY days: does the price stop there more often than at a random price the same distance away? Mostly no. Treat them as reference points, not predictions. Hover a name for what it is.") + "</p>"
     + '<div class="lvls">' + near("resistance").map(row).join("") + '<div class="here"><span class="px">' + usd(o.ref) + "</span><span>" + esc(o.ref_label) + "</span></div>" + near("support").map(row).join("") + "</div>"
     + '<p class="why muted">' + esc(o.tested) + "</p></div></details></div></section>";
 }
@@ -712,7 +714,7 @@ function renderToday() {
     + outlookSection(r.spy_outlook)
     + '<section class="stack"><h2>The market today</h2><div class="card"><div class="top"><div class="name"><span class="sym">' + esc(r.regime.replace(" + ", " · ").toUpperCase()) + "</span></div>"
     + '<span class="pill">SPY ' + pct(r.spy_vs_ema) + ' vs its 200-day average</span><span class="pill">VIX ' + r.vix + "</span></div>"
-    + fearGauge(r.fear) + '<p class="why">' + esc(r.regime_note) + "</p>"
+    + fearGauge(r.fear) + '<p class="why">What this regime meant for the strategy ' + info(r.regime_note) + "</p>"
     + '<p class="why">Keep about <b>' + usd(r.core_dollars, 0) + "</b> in " + esc(r.core_symbol || "cash") + ". " + plural(r.n_swing, "swing position") + " use about " + usd(r.swing_dollars, 0) + " of your " + usd(r.account, 0) + " account.</p></div></section>"
     + '<details><summary>How to read this page</summary><div class="in"><dl>'
     + "<dt>Confidence</dt><dd>Gap-down dips: six checks, out of 6. Momentum dips: four checks, out of 4. On either scale, high (3 or more) carried nearly all of the edge and low picks had almost none.</dd>"
@@ -987,13 +989,14 @@ function autoLine(e) {
   return '<div class="card"><div class="top"><div class="name"><span class="sym">' + when + '</span></div><span class="pill ' + tone + '">' + esc({ placed: "Traded", refused: "Refused", error: "Error", skipped: "Skipped", off: "Off", nothing: "Nothing to do" }[e.action] || e.action) + "</span></div>"
     + '<div class="why">' + text.charAt(0).toUpperCase() + text.slice(1) + kept + "</div></div>";
 }
+const info = (text) => '<span class="info" tabindex="0" role="note" aria-label="More info"><span aria-hidden="true">i</span><span class="tip">' + esc(text) + "</span></span>";
 function autopilotSection() {
   const on = autoOn(), log = (state.autopilot || []).slice().reverse(), c = nyClock(), today = nyDate();
   const missed = on && c.weekday && c.mins > 960 && state.screen && state.screen.as_of === today && !log.some((e) => e.date === today && e.mode === "buy");
-  return '<section class="stack"><div class="sec-head"><h2>Autopilot</h2><span class="pill ' + (on ? "good" : "warn") + '">' + (on ? "On" : "Off") + '</span>'
+  return '<section class="stack"><div class="sec-head"><h2>Autopilot</h2>' + info("Buys the plan picks from the final list at about 3:40-3:55pm ET, and sells at the open on the day the exit rule fires (RSI(2) above 70 at the close, or five sessions held). Same guardrails as the Buy button: S&P 500 only, $200 at most per order, never doubles up, market hours only. Spreads stay manual.")
+    + '<span class="pill ' + (on ? "good" : "warn") + '">' + (on ? "On" : "Off") + '</span>'
     + '<span class="spacer"></span>' + (on && canTrade() ? '<button class="small" id="autoNow">Run the autopilot now</button>' : "") + '<button class="small" id="autoToggle">' + (on ? "Turn off" : "Turn on") + "</button></div>"
-    + '<p class="sub">' + (on ? "It buys the plan picks from the final list at about 3:40-3:55pm ET and sells at the open on the day the exit rule fires (RSI(2) above 70 at the close, or five sessions held). Same guardrails as the Buy button: S&P 500 only, $200 at most per order, never doubles up, market hours only. Spreads stay manual."
-      : "Switched off: nothing is placed by itself. Turn it on here or under Account and trade size.") + "</p>"
+    + (on ? "" : '<p class="sub">Switched off: nothing is placed by itself. Turn it on here or under Account and trade size.</p>')
     + (missed ? '<div class="note warn">No afternoon run reached today\u2019s window, so nothing was bought today. GitHub\u2019s timers sometimes arrive late; the sells still run in the morning.</div>' : "")
     + (on && !missed && c.weekday && ((c.mins >= 600 && c.mins < 660 && !log.some((e) => e.date === today && e.mode === "sell")) || (c.mins >= 940 && c.mins < 958 && !log.some((e) => e.date === today && e.mode === "buy"))) ? '<div class="note warn">The timer has not run yet in this window. Press <b>Run the autopilot now</b> and it does its check within about a minute.</div>' : "")
     + (log.length ? '<div class="scrollbox fade"><div class="stack">' + log.slice(0, 10).map(autoLine).join("") + "</div></div>" : '<p class="sub muted">Nothing yet. The first run is the next trading window.</p>') + "</section>";
