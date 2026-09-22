@@ -862,11 +862,18 @@ async function runNow() {
 async function autoNow() {
   const b = $("autoNow"); if (!b) return; b.disabled = true; b.textContent = "Starting…";
   try {
-    const before = Date.now();
+    const before = Date.now(), r = state.screen, c = nyClock();
+    // In the afternoon window the autopilot needs a FINAL list. If there is none yet,
+    // start the screener too; the autopilot waits for its result (until 3:56).
+    const needList = c.weekday && c.mins >= 925 && c.mins < 958 && !(r && r.as_of === nyDate() && r.status === "final");
+    if (needList) {
+      const sr = await gh("/actions/workflows/screen.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: cfg.branch || "main" }) });
+      if (!sr.ok) throw new Error("Could not start the screener (" + sr.status + "), so the autopilot was not started either.");
+    }
     const res = await gh("/actions/workflows/auto.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: "main", inputs: { mode: "" } }) }, true);
     if (!res.ok) throw new Error(res.status === 403 ? "The trading token lacks permission for this (needs Actions: read and write on dip-trader)." : "Could not start the autopilot (" + res.status + ").");
-    toast("Autopilot started. Outside its windows it only logs that there was nothing to do.");
-    for (let i = 0; i < 30; i++) {
+    toast(needList ? "The list isn't final yet, so the screener runs first (about 3 minutes); the autopilot waits for it, then buys." : "Autopilot started. Outside its windows it only logs that there was nothing to do.");
+    for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, 10000));
       b.textContent = "Running… " + Math.round((Date.now() - before) / 1000) + "s";
       const runs = await (await gh("/actions/workflows/auto.yml/runs?per_page=1&event=workflow_dispatch", {}, true)).json();
