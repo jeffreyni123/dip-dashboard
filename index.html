@@ -351,6 +351,7 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
           <label>Amount per trade ($) <input id="acctDollars" type="number" step="1" min="0" inputmode="decimal"></label>
           <label>Most spreads open at once <input id="acctSpreads" type="number" step="1" min="0" max="9" inputmode="numeric"></label>
         </div>
+        <label class="check"><input type="checkbox" id="acctAuto"> <b>Autopilot</b>: place the stock trades for me (buys near the close, sells at the open)</label>
         <p class="sub">The screener sizes each buy from the account value. Set a smaller amount per trade if you want to
           start below the plan, for example $10 to $20.</p>
         <div class="row"><button type="submit">Save</button></div>
@@ -360,7 +361,6 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
 
   <section id="p-journal" class="stack-lg" data-page hidden>
     <div class="sec-head"><h1>Journal</h1><span id="jrnStamp" class="sub muted spacer"></span></div>
-    <div id="paperBody" class="stack-lg"></div>
     <div id="jrnBody" class="stack-lg"><p class="sub">Loading…</p></div>
   </section>
 
@@ -400,7 +400,7 @@ const niceDay = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US"
 
 let cfg = {};
 try { cfg = JSON.parse(localStorage.getItem("dipdesk") || "{}"); } catch (e) { cfg = {}; }
-const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, equity: [], spreads: [], paper: null, settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
+const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, equity: [], spreads: [], autopilot: [], settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
 const canTrade = () => !!(cfg.tradeToken && !LOCAL);
 
 function toast(msg) {
@@ -477,12 +477,12 @@ async function loadAll() {
   if (!cfg.token && !LOCAL) { showConnect(true); return; }
   $("conn").textContent = "loading…";
   try {
-    const [screen, trades, signals, review, about, settings, account, studies, equity, spreads, paper] = await Promise.all([
+    const [screen, trades, signals, review, about, settings, account, studies, equity, spreads, autopilot] = await Promise.all([
       getJSON("data/screen_latest.json", null), getJSON("data/trades.json", []),
       getJSON("data/signals.json", []), getJSON("data/review.json", null),
-      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null), getJSON("data/equity.json", []), getJSON("data/spreads.json", []), getJSON("data/paper_summary.json", null)]);
+      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null), getJSON("data/equity.json", []), getJSON("data/spreads.json", []), getJSON("data/autopilot.json", [])]);
     Object.assign(state, { screen: screen.data, trades: trades.data, tradesSha: trades.sha, signals: signals.data,
-      review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], spreads: spreads.data || [], paper: paper.data, settings: settings.data, settingsSha: settings.sha });
+      review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], spreads: spreads.data || [], autopilot: autopilot.data || [], settings: settings.data, settingsSha: settings.sha });
     $("conn").textContent = LOCAL ? "local preview" : "connected";
     showConnect(false); renderAll(); setTimeout(autoRun, 800);
   } catch (e) { $("conn").textContent = "not connected"; toast(e.message); showConnect(true); }
@@ -491,7 +491,7 @@ function showConnect(on) {
   $("connect").hidden = !on;
   $("cfgOwner").value = cfg.owner || ""; $("cfgRepo").value = cfg.repo || "robinhood-bot"; $("cfgToken").value = cfg.token || ""; $("cfgTrade").value = cfg.tradeToken || "";
 }
-function renderAll() { renderToday(); renderPositions(); renderPaper(); renderJournal(); renderStudies(); renderStrategy(); }
+function renderAll() { renderToday(); renderPositions(); renderJournal(); renderStudies(); renderStrategy(); }
 
 /* ---------------- shared pieces ---------------- */
 function meter(score, level, of = 6) {
@@ -657,11 +657,13 @@ function renderHero() {
   const s = situation(), r = state.screen;
   const status = r ? ({ final: ["good", "Final list"], preliminary: ["warn", "Preview, not final"], "after close": ["", "Taken after the close"], closed: ["", "Last session's data"] }[r.status] || ["", r.status]) : null;
   $("hero").className = "hero " + s.tone;
-  $("hero").innerHTML = '<div class="when">' + esc(s.when) + '</div><div class="say">' + esc(s.say) + '</div><p class="sub">' + esc(s.sub) + "</p>"
+  const sub = autoOn() && (s.live || /, sell /.test(s.say + " " + s.sub)) ? "The autopilot handles this for you; nothing to click. " + s.sub : s.sub;
+  $("hero").innerHTML = '<div class="when">' + esc(s.when) + '</div><div class="say">' + esc(s.say) + '</div><p class="sub">' + esc(sub) + "</p>"
     + '<div class="row"><div class="facts">' + (status ? '<span class="pill ' + status[0] + '">' + esc(status[1]) + "</span>" : "")
     + (r ? '<span class="pill">Updated ' + esc(s.fresh ? r.run_at.slice(11) : niceDay(r.as_of)) + "</span>" : "")
     + (r && openSpreads().some((x) => x.expiry <= nyDate()) ? '<span class="pill warn">A spread expires today or is past expiry</span>' : "")
     + (r && r.spread && openSpreads().some((x) => r.spread.price / x.short - 1 < 0.01) ? '<span class="pill bad">A spread is under 1% from its strike</span>' : "")
+    + '<span class="pill ' + (autoOn() ? "good" : "") + '">Autopilot ' + (autoOn() ? "on" : "off") + "</span>"
     + (r && r.fear ? '<span class="pill ' + ["good", "", "warn", "bad"][r.fear.index] + '">Fear: ' + esc(r.fear.level) + " · VIX " + r.fear.vix + "</span>" : "") + "</div>"
     + '<button class="' + (s.tone === "warn" ? "primary" : "") + ' small spacer" id="runNow">Run now</button></div>';
   $("runNow").addEventListener("click", runNow);
@@ -683,8 +685,8 @@ function renderToday() {
   const holding = r.holding.length ? '<p class="sub">Still holding ' + r.holding.map((h) => '<span class="sym">' + esc(h.sym) + "</span> (day " + h.day + " of 5)").join(", ") + ".</p>" : "";
   const unknown = r.unknown_holdings.length ? '<div class="note warn">Not covered by the screen, check by hand: ' + esc(r.unknown_holdings.join(", ")) + "</div>" : "";
 
-  body.innerHTML =
-    '<section class="stack"><div class="sec-head"><h2>' + (fresh ? "Sell at tomorrow's open" : "Sell at the open") + '</h2><span class="count ' + (r.sells.length ? "on" : "") + '">' + r.sells.length + "</span></div>" + sells + holding + unknown + "</section>"
+  body.innerHTML = autopilotSection()
+    + '<section class="stack"><div class="sec-head"><h2>' + (fresh ? "Sell at tomorrow's open" : "Sell at the open") + '</h2><span class="count ' + (r.sells.length ? "on" : "") + '">' + r.sells.length + "</span></div>" + sells + holding + unknown + "</section>"
     + '<section class="stack"><div class="sec-head"><h2>Buy before the close</h2><span class="count ' + (r.buys.length ? "on" : "") + '">' + r.buys.length + ((r.extra_buys || []).length ? " + " + r.extra_buys.length + " more" : "") + ((r.low_buys || []).length ? " · " + r.low_buys.length + " low score" : "") + "</span>"
     + '<div class="tools spacer" id="boardTools"' + (r.buys.length + (r.extra_buys || []).length + (r.low_buys || []).length > 1 ? "" : " hidden") + '><label class="check" style="font-size:13px"><input type="checkbox" id="boardHigh"> High confidence only</label>'
     + '<label style="display:flex;gap:6px;align-items:center;font-size:13px">Sort <select id="boardSort"><option value="confidence">Confidence</option><option value="rank">Strategy rank</option><option value="drop">Biggest drop</option></select></label></div></div>'
@@ -704,9 +706,10 @@ function renderToday() {
     + "<dt>Oversold</dt><dd>RSI(2), a 0 to 100 gauge of short-term selling. Under 10 is very oversold.</dd>"
     + "<dt>Daily range</dt><dd>How much the stock normally moves in a day. Bigger movers bounce enough to be worth trading.</dd>"
     + "<dt>Plan</dt><dd>The dollar amount the strategy assigns to each pick.</dd></dl>"
-    + '<p class="sub muted">Data run ' + esc(r.run_at) + " across " + r.symbols + " symbols. Orders are only ever placed when you press Buy or Sell and then confirm.</p></div></details>";
+    + '<p class="sub muted">Data run ' + esc(r.run_at) + " across " + r.symbols + " symbols. " + (autoOn() ? "The autopilot places the stock trades on this page by itself; spreads are yours to place." : "Orders are only placed when you press Buy or Sell and then confirm, or by the autopilot when it is on.") + "</p></div></details>";
   try { $("boardSort").value = localStorage.getItem("dipdesk-sort") || "confidence"; $("boardHigh").checked = localStorage.getItem("dipdesk-high") === "1"; } catch (e) { /* ignore */ }
   $("boardSort").addEventListener("change", renderBoard); $("boardHigh").addEventListener("change", renderBoard);
+  $("autoToggle").addEventListener("click", () => { if (autoOn() ? confirm("Turn the autopilot off? It will stop placing buys and sells.") : confirm("Turn the autopilot on? It will place the plan's stock trades by itself, with the usual limits.")) toggleAuto(); });
   wireSpreadBook();
   renderBoard();
 }
@@ -892,7 +895,7 @@ function renderPositions() {
   if (!$("buyDate").value) $("buyDate").value = nyDate();
   if (!$("sellDate").value) $("sellDate").value = nyDate();
   if (!$("buyDollars").value) $("buyDollars").value = state.settings.default_dollars || 67;
-  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? ""; $("acctSpreads").value = state.settings.max_spreads ?? 3;
+  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? ""; $("acctSpreads").value = state.settings.max_spreads ?? 3; $("acctAuto").checked = !!state.settings.autopilot;
 }
 async function syncNow() {
   const b = $("syncNow"); b.disabled = true; b.textContent = "Syncing…";
@@ -925,60 +928,35 @@ async function save(fn, okMsg) {
   try { await fn(); renderAll(); toast(okMsg); } catch (e) { toast(e.conflict ? "Someone else just saved. Press Refresh and try again." : e.message); }
 }
 
-/* ---------------- forward test: the autopilot on paper, against you ---------------- */
-const LINE = { auto: ["var(--series)", "Autopilot (the plan, by itself)"], you: ["#c2620a", "You (real account)"], spy: ["var(--muted)", "Just holding the S&P 500"] };
-function renderPaper() {
-  const d = state.paper, el = $("paperBody"); if (!el) return;
-  if (!d || !d.autopilot || !d.autopilot.curve) { el.innerHTML = ""; return; }
-  const a = d.autopilot, y = d.you || {}, v = d.verdict || {};
-  const vk = { early: "", ok: "", worse: "bad", better: "good" }[v.level] || "";
-  const money = (x) => (x == null ? "–" : usd(x, 0)), rel = (x) => (x == null ? "" : pct(x / 1000 - 1, 1));
-  const row = (g) => "<tr><td style=\"white-space:normal;min-width:170px\">" + esc(g.name) + '</td><td class="num">' + (g.n || 0) + '</td><td class="num">' + (g.n ? pct0(g.win) : "–")
-    + '</td><td class="num ' + cls(g.avg) + '">' + (g.n ? pct(g.avg, 2) : "–") + '</td><td class="num">' + (g.n ? pct(g.spy, 2) : "–") + '</td><td class="num ' + cls(g.edge) + '">' + (g.n ? pct(g.edge, 2) : "–") + "</td></tr>";
-  el.innerHTML = '<section class="stack"><div class="sec-head"><h2>Autopilot vs you</h2><span class="sub muted spacer">Paper only · since ' + esc(niceDay(d.since)) + "</span></div>"
-    + '<p class="sub">If the dashboard had placed every order by itself since it went live: $1,000, every plan pick, the exact rules, no money involved. Your real account is beside it, so in a few months you can see whether the edge is real and whether your own choices help or hurt.</p>'
-    + '<div class="tiles">' + tile("Autopilot", money(a.value), rel(a.value) + " · " + a.trades + " trades, " + a.closed + " closed")
-    + tile("You", money(y.you_value), (y.you_value ? rel(y.you_value) + " · " : "") + plural(y.you_trades || 0, "trade"))
-    + tile("S&P 500", money(a.spy_value), rel(a.spy_value) + " · just holding")
-    + tile("Autopilot's picks", a.closed ? pct0(a.win) + " win" : "–", a.closed ? "average " + pct(a.avg, 2) + " (backtest: 62%, +1.1%)" : "none closed yet") + "</div>"
-    + '<div class="note ' + vk + '"><b>' + ({ early: "Too early to judge", ok: "No clear verdict yet", worse: "Worse than luck explains", better: "The edge is showing" }[v.level] || "") + ".</b> " + esc(v.text || "") + "</div>"
-    + '<div class="panel stack"><h2>Account value, $1,000 start</h2><div class="legend">' + Object.values(LINE).map((l) => '<span><i style="background:' + l[0] + '"></i>' + l[1] + "</span>").join("") + '</div><div class="chart" id="paperChart"></div></div>'
-    + '<div class="panel stack"><h2>You against the autopilot</h2><p class="sub">The autopilot has taken <b>' + a.trades + "</b> trades. You took <b>" + (y.took || 0) + "</b> of them and skipped <b>" + (y.skipped || 0) + "</b>."
-    + (y.skipped_closed ? " The " + y.skipped_closed + " skipped ones that have closed averaged <b class=\"" + cls(y.skipped_avg) + '">' + pct(y.skipped_avg, 2) + "</b>." : "")
-    + ((y.off_plan || []).length ? " Trades of yours the plan did not call: " + esc(y.off_plan.map((x) => x[1]).join(", ")) + "." : "") + "</p>"
-    + ((y.skipped_list || []).length ? '<p class="sub muted" style="font-size:13px">Skipped: ' + y.skipped_list.map((x) => esc(x[1]) + (x[2] == null ? " (open)" : " " + pct(x[2], 1))).join(", ") + ".</p>" : "") + "</div>"
-    + '<div class="panel stack"><h2>Does the confidence score work live?</h2><div class="scroll"><table><thead><tr><th>Paper trades</th><th class="num">Closed</th><th class="num">Win</th><th class="num">Avg</th><th class="num">SPY, same days</th><th class="num">Edge</th></tr></thead><tbody>'
-    + d.groups.map(row).join("") + '</tbody></table></div><p class="sub muted" style="font-size:13px">Every pick on every final list is followed here, $' + d.stake + " each on paper, whether or not you traded it. "
-    + "High confidence should beat medium, and both should beat the low-score picks the plan skips. " + plural(d.n_open, "paper trade") + " still open.</p></div></section>";
-  drawLines($("paperChart"), a.curve, y.you_curve || []);
+/* ---------------- autopilot ---------------- */
+const autoOn = () => !!state.settings.autopilot;
+function autoLine(e) {
+  const when = niceDay(e.date) + " " + (e.mode === "buy" ? "afternoon" : "morning") + (e.at ? " (" + esc(e.at) + ")" : "");
+  const fills = (e.orders || []).map((o) => {
+    if (o.state === "filled" || o.filled_qty) return (o.side === "buy" ? "bought " : "sold ") + esc(o.symbol) + (o.avg_price ? " at " + usd(o.avg_price) : "") + (o.side === "buy" && o.dollars ? " (" + usd(o.dollars, 0) + ")" : "") + (o.why ? " because it " + esc(o.why.split(":")[0]) : "");
+    if (o.ok === false) return "did not " + o.side + " " + esc(o.symbol) + ": " + esc(o.reason || "refused");
+    return o.side + " " + esc(o.symbol) + " is " + esc(o.state || "pending");
+  });
+  const kept = (e.kept || []).length ? " Holding " + e.kept.map((k) => esc(k.sym) + " (" + esc(k.why) + ")").join(", ") + "." : "";
+  const tone = { placed: "good", refused: "bad", error: "bad", skipped: "warn", off: "", nothing: "" }[e.action] || "";
+  const text = e.action === "placed" ? fills.join("; ") + "." : esc(e.note || e.action) + (fills.length ? " " + fills.join("; ") + "." : "");
+  return '<div class="card"><div class="top"><div class="name"><span class="sym">' + when + '</span></div><span class="pill ' + tone + '">' + esc({ placed: "Traded", refused: "Refused", error: "Error", skipped: "Skipped", off: "Off", nothing: "Nothing to do" }[e.action] || e.action) + "</span></div>"
+    + '<div class="why">' + text.charAt(0).toUpperCase() + text.slice(1) + kept + "</div></div>";
 }
-function drawLines(el, curve, you) {
-  if (!el || !curve.length) return;
-  const youBy = Object.fromEntries(you.map((p) => [p.date, p.you]));
-  const pts = curve.map((p) => ({ date: p.date, auto: p.auto, spy: p.spy, you: youBy[p.date] ?? null }));
-  const W = Math.max(300, Math.round(el.clientWidth || 720)), H = W < 520 ? 200 : 240, m = { l: 48, r: 14, t: 12, b: 26 };
-  const all = pts.flatMap((p) => [p.auto, p.spy, p.you].filter((x) => x != null)).concat([1000]);
-  const lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo || 10) * 0.15, y0 = lo - pad, y1 = hi + pad;
-  const X = (i) => m.l + (pts.length < 2 ? 0.5 : i / (pts.length - 1)) * (W - m.l - m.r), Y = (v) => H - m.b - ((v - y0) / (y1 - y0)) * (H - m.t - m.b);
-  const step = niceStep((y1 - y0) / 4); let svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Account value over time: autopilot, you and the S&P 500">';
-  for (let v = Math.ceil(y0 / step) * step; v <= y1; v += step) svg += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="' + (Math.abs(v - 1000) < 1e-6 ? "var(--axis)" : "var(--hair)") + '"/><text x="' + (m.l - 8) + '" y="' + (Y(v) + 4) + '" text-anchor="end">$' + Math.round(v).toLocaleString("en-US") + "</text>";
-  const fmt = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  svg += '<text x="' + m.l + '" y="' + (H - 6) + '">' + fmt(pts[0].date) + '</text><text x="' + (W - m.r) + '" y="' + (H - 6) + '" text-anchor="end">' + fmt(pts[pts.length - 1].date) + "</text>";
-  for (const k of ["spy", "you", "auto"]) {
-    const seg = pts.map((p, i) => [i, p[k]]).filter((q) => q[1] != null); if (!seg.length) continue;
-    svg += '<path d="' + seg.map((q, j) => (j ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[1]).toFixed(1)).join(" ") + '" fill="none" stroke="' + LINE[k][0] + '" stroke-width="2"' + (k === "spy" ? ' stroke-dasharray="4 4"' : "") + ' stroke-linejoin="round" stroke-linecap="round"/>';
-    const last = seg[seg.length - 1]; svg += '<circle cx="' + X(last[0]).toFixed(1) + '" cy="' + Y(last[1]).toFixed(1) + '" r="4" fill="' + LINE[k][0] + '" stroke="var(--surface)" stroke-width="2"/>';
-  }
-  svg += '<line id="pxh" y1="' + m.t + '" y2="' + (H - m.b) + '" stroke="var(--axis)" visibility="hidden"/></svg><div id="ptip" hidden style="position:absolute;pointer-events:none;background:var(--ink);color:var(--ground);font-size:12px;line-height:1.4;padding:6px 9px;border-radius:6px;white-space:nowrap;z-index:3"></div>';
-  el.innerHTML = svg;
-  const svgEl = el.querySelector("svg"), tip = el.querySelector("#ptip"), xh = el.querySelector("#pxh");
-  const move = (ev) => { const box = svgEl.getBoundingClientRect(), px = ((ev.touches ? ev.touches[0].clientX : ev.clientX) - box.left) * (W / box.width);
-    let i = 0; pts.forEach((_, j) => { if (Math.abs(X(j) - px) < Math.abs(X(i) - px)) i = j; }); const p = pts[i];
-    xh.setAttribute("x1", X(i)); xh.setAttribute("x2", X(i)); xh.setAttribute("visibility", "visible");
-    tip.innerHTML = "<b>" + esc(fmt(p.date)) + "</b><br>Autopilot " + usd(p.auto, 0) + (p.you != null ? "<br>You " + usd(p.you, 0) : "") + "<br>S&amp;P 500 " + usd(p.spy, 0);
-    tip.hidden = false; tip.style.top = "4px"; const left = (X(i) / W) * box.width; tip.style.left = Math.min(Math.max(left - tip.offsetWidth / 2, 0), box.width - tip.offsetWidth) + "px"; };
-  const leave = () => { tip.hidden = true; xh.setAttribute("visibility", "hidden"); };
-  svgEl.addEventListener("mousemove", move); svgEl.addEventListener("touchstart", move, { passive: true }); svgEl.addEventListener("touchmove", move, { passive: true }); svgEl.addEventListener("mouseleave", leave);
+function autopilotSection() {
+  const on = autoOn(), log = (state.autopilot || []).slice().reverse(), c = nyClock(), today = nyDate();
+  const missed = on && c.weekday && c.mins > 960 && state.screen && state.screen.as_of === today && !log.some((e) => e.date === today && e.mode === "buy");
+  return '<section class="stack"><div class="sec-head"><h2>Autopilot</h2><span class="pill ' + (on ? "good" : "warn") + '">' + (on ? "On" : "Off") + '</span>'
+    + '<button class="small spacer" id="autoToggle">' + (on ? "Turn off" : "Turn on") + "</button></div>"
+    + '<p class="sub">' + (on ? "It buys the plan picks from the final list at about 3:40-3:55pm ET and sells at the open on the day the exit rule fires (RSI(2) above 70 at the close, or five sessions held). Same guardrails as the Buy button: S&P 500 only, $200 at most per order, never doubles up, market hours only. Spreads stay manual."
+      : "Switched off: nothing is placed by itself. Turn it on here or under Account and trade size.") + "</p>"
+    + (missed ? '<div class="note warn">No afternoon run reached today\u2019s window, so nothing was bought today. GitHub\u2019s timers sometimes arrive late; the sells still run in the morning.</div>' : "")
+    + (log.length ? '<div class="scrollbox fade"><div class="stack">' + log.slice(0, 10).map(autoLine).join("") + "</div></div>" : '<p class="sub muted">Nothing yet. The first run is the next trading window.</p>') + "</section>";
+}
+async function toggleAuto() {
+  const next = { ...state.settings, autopilot: !autoOn() };
+  try { const cur = await getJSON("data/settings.json", {}); state.settingsSha = await putJSON("data/settings.json", next, cur.sha, next.autopilot ? "autopilot on" : "autopilot off"); state.settings = next; renderToday(); renderPositions(); toast(next.autopilot ? "Autopilot is on. It trades at the next window." : "Autopilot is off. Nothing more will be placed by itself."); }
+  catch (e) { toast(e.message); }
 }
 
 /* ---------------- journal ---------------- */
@@ -1122,7 +1100,7 @@ function showTab(name) {
   name = OLD[name] || name; if (!TABS.includes(name)) name = "today";
   document.querySelectorAll("[data-page]").forEach((p) => { p.hidden = p.id !== "p-" + name; });
   document.querySelectorAll("button.tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
-  if (name === "journal") { renderPaper(); if (state.review && state.review.n_closed) drawChart(state.review.closed); }   // charts need a visible width
+  if (name === "journal") { if (state.review && state.review.n_closed) drawChart(state.review.closed); }   // charts need a visible width
   try { localStorage.setItem("dipdesk-tab", name); } catch (e) { /* private mode */ }
   window.scrollTo(0, 0);
 }
@@ -1137,8 +1115,8 @@ $("disconnectBtn").addEventListener("click", () => { cfg = {}; try { localStorag
 $("buyForm").addEventListener("submit", submitBuy);
 $("sellForm").addEventListener("submit", submitSell);
 $("acctForm").addEventListener("submit", async (ev) => { ev.preventDefault();
-  const next = { ...state.settings, account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null, max_spreads: +$("acctSpreads").value || 3 };
-  try { const cur = await getJSON("data/settings.json", {}); state.settingsSha = await putJSON("data/settings.json", next, cur.sha, "settings"); state.settings = next; renderToday(); toast("Saved. The next screener run uses it."); }
+  const next = { ...state.settings, account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null, max_spreads: +$("acctSpreads").value || 3, autopilot: $("acctAuto").checked };
+  try { const cur = await getJSON("data/settings.json", {}); state.settingsSha = await putJSON("data/settings.json", next, cur.sha, "settings"); state.settings = next; renderToday(); toast("Saved. The next screener run uses it." + (next.autopilot ? " Autopilot is on." : " Autopilot is off.")); }
   catch (e) { toast(e.message); } });
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest("button"); if (!b) return;
