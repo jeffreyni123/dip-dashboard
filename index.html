@@ -709,6 +709,7 @@ function renderToday() {
     + '<p class="sub muted">Data run ' + esc(r.run_at) + " across " + r.symbols + " symbols. " + (autoOn() ? "The autopilot places the stock trades on this page by itself; spreads are yours to place." : "Orders are only placed when you press Buy or Sell and then confirm, or by the autopilot when it is on.") + "</p></div></details>";
   try { $("boardSort").value = localStorage.getItem("dipdesk-sort") || "confidence"; $("boardHigh").checked = localStorage.getItem("dipdesk-high") === "1"; } catch (e) { /* ignore */ }
   $("boardSort").addEventListener("change", renderBoard); $("boardHigh").addEventListener("change", renderBoard);
+  if ($("autoNow")) $("autoNow").addEventListener("click", autoNow);
   $("autoToggle").addEventListener("click", () => { if (autoOn() ? confirm("Turn the autopilot off? It will stop placing buys and sells.") : confirm("Turn the autopilot on? It will place the plan's stock trades by itself, with the usual limits.")) toggleAuto(); });
   wireSpreadBook();
   renderBoard();
@@ -858,6 +859,27 @@ async function runNow() {
   } catch (e) { toast(e.message); renderHero(); }
 }
 
+async function autoNow() {
+  const b = $("autoNow"); if (!b) return; b.disabled = true; b.textContent = "Starting…";
+  try {
+    const before = Date.now();
+    const res = await gh("/actions/workflows/auto.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: "main", inputs: { mode: "" } }) }, true);
+    if (!res.ok) throw new Error(res.status === 403 ? "The trading token lacks permission for this (needs Actions: read and write on dip-trader)." : "Could not start the autopilot (" + res.status + ").");
+    toast("Autopilot started. Outside its windows it only logs that there was nothing to do.");
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 10000));
+      b.textContent = "Running… " + Math.round((Date.now() - before) / 1000) + "s";
+      const runs = await (await gh("/actions/workflows/auto.yml/runs?per_page=1&event=workflow_dispatch", {}, true)).json();
+      const run = runs.workflow_runs && runs.workflow_runs[0];
+      if (run && new Date(run.created_at).getTime() >= before - 60000 && run.status === "completed") {
+        if (run.conclusion !== "success") throw new Error("The autopilot run failed. Check the Autopilot log or Robinhood before trying again.");
+        await loadAll(); toast("Done. See the Autopilot log."); return;
+      }
+    }
+    throw new Error("Still running. Press Refresh in a minute.");
+  } catch (e) { toast(e.message); renderToday(); }
+}
+
 /* ---------------- positions ---------------- */
 function renderPositions() {
   const open = state.trades.filter((t) => !t.exit_date);
@@ -947,10 +969,11 @@ function autopilotSection() {
   const on = autoOn(), log = (state.autopilot || []).slice().reverse(), c = nyClock(), today = nyDate();
   const missed = on && c.weekday && c.mins > 960 && state.screen && state.screen.as_of === today && !log.some((e) => e.date === today && e.mode === "buy");
   return '<section class="stack"><div class="sec-head"><h2>Autopilot</h2><span class="pill ' + (on ? "good" : "warn") + '">' + (on ? "On" : "Off") + '</span>'
-    + '<button class="small spacer" id="autoToggle">' + (on ? "Turn off" : "Turn on") + "</button></div>"
+    + '<span class="spacer"></span>' + (on && canTrade() ? '<button class="small" id="autoNow">Run the autopilot now</button>' : "") + '<button class="small" id="autoToggle">' + (on ? "Turn off" : "Turn on") + "</button></div>"
     + '<p class="sub">' + (on ? "It buys the plan picks from the final list at about 3:40-3:55pm ET and sells at the open on the day the exit rule fires (RSI(2) above 70 at the close, or five sessions held). Same guardrails as the Buy button: S&P 500 only, $200 at most per order, never doubles up, market hours only. Spreads stay manual."
       : "Switched off: nothing is placed by itself. Turn it on here or under Account and trade size.") + "</p>"
     + (missed ? '<div class="note warn">No afternoon run reached today\u2019s window, so nothing was bought today. GitHub\u2019s timers sometimes arrive late; the sells still run in the morning.</div>' : "")
+    + (on && !missed && c.weekday && ((c.mins >= 600 && c.mins < 660 && !log.some((e) => e.date === today && e.mode === "sell")) || (c.mins >= 940 && c.mins < 958 && !log.some((e) => e.date === today && e.mode === "buy"))) ? '<div class="note warn">The timer has not run yet in this window. Press <b>Run the autopilot now</b> and it does its check within about a minute.</div>' : "")
     + (log.length ? '<div class="scrollbox fade"><div class="stack">' + log.slice(0, 10).map(autoLine).join("") + "</div></div>" : '<p class="sub muted">Nothing yet. The first run is the next trading window.</p>') + "</section>";
 }
 async function toggleAuto() {
