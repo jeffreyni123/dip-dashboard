@@ -644,7 +644,7 @@ function situation() {
   const r = state.screen, c = nyClock(), today = nyDate();
   if (!r) return { tone: "warn", when: "No list yet", say: "The screener hasn't run yet.", sub: "Press Run now, or wait for the scheduled run around 3:35pm ET.", live: false, fresh: false };
   const fresh = r.as_of === today, sells = r.sells.map((s) => s.sym), nB = r.buys.length;
-  const nHigh = r.buys.filter((b) => b.confidence_level === "high").length, spread = r.spread && r.spread.signal;
+  const nHigh = r.buys.filter((b) => b.confidence_level === "high").length, spread = spreadLive(r.spread);
   const OPEN = 570, FINAL = 925, CLOSE = 960;
   if (!c.weekday) return { tone: "", when: "Weekend", say: "The market is closed.", fresh, live: false,
     sub: (sells.length ? "At Monday's open, sell " + sells.join(", ") + ". " : "") + "The next list arrives Monday around 3:35pm ET." };
@@ -660,7 +660,7 @@ function situation() {
       say: "The list isn't final yet. Press Run now.", sub: "It takes about 3 minutes. Buy only from a list marked Final." };
     const bits = [];
     if (nB) bits.push(plural(nB, "stock") + " to buy" + (nHigh ? " (" + nHigh + " high confidence)" : nB ? " (none high confidence)" : ""));
-    if (spread) bits.push("a SPY spread signal");
+    if (spread) bits.push("a SPY spread slot to fill");
     return { tone: bits.length ? "act" : "", when: "Closes in " + span(CLOSE - c.mins), fresh, live: true,
       say: bits.length ? "Before the close: " + bits.join(", and ") + "." : "Nothing to buy today.",
       sub: (sells.length ? "Tomorrow at the open, sell " + sells.join(", ") + "." : "No trade is the right move on days like this.") };
@@ -684,7 +684,7 @@ function renderHero() {
     + (r && r.fear ? '<span class="pill ' + ["good", "", "warn", "bad"][r.fear.index] + '">Fear: ' + esc(r.fear.level) + " · VIX " + r.fear.vix + "</span>" : "") + "</div>"
     + '<button class="' + (s.tone === "warn" ? "primary" : "") + ' small spacer" id="runNow">Run now</button></div>';
   $("runNow").addEventListener("click", runNow);
-  const n = r && s.live ? r.buys.length + (r.spread && r.spread.signal ? 1 : 0) : 0;
+  const n = r && s.live ? r.buys.length + (spreadLive(r.spread) ? 1 : 0) : 0;
   $("todayBadge").hidden = !n; $("todayBadge").textContent = n;
 }
 
@@ -772,6 +772,13 @@ function renderBoard() {
 const maxSpreads = () => state.settings.max_spreads ?? 3;
 const openSpreads = () => (state.spreads || []).filter((x) => !x.closed);
 const spreadPnl = (x) => (x.credit - (x.close_cost || 0)) * 100 * (x.contracts || 1);
+function spreadLive(sp) {                       // is there a spread to place today?
+  if (!sp) return false;
+  if (!sp.retired) return !!sp.signal;
+  const open = openSpreads(), last = open.map((x) => x.opened || "").sort().pop() || "";
+  const daysSince = last ? Math.round((new Date(nyDate()) - new Date(last)) / 86400000) : 99;
+  return (sp.aggressive || []).some((g) => g.signal) && open.length < maxSpreads() && daysSince >= 3;
+}
 function roomNote(signal) {
   if (!signal) return "";
   const open = openSpreads(), max = maxSpreads(), room = max - open.length;
@@ -797,7 +804,7 @@ function spreadBook(sp) {
       + '<button class="small ghost danger" data-spdel="' + esc(x.id) + '" style="flex:0 0 auto">Delete</button></div></div>';
   }).join("");
   const won = closed.filter((x) => spreadPnl(x) > 0).length, total = closed.reduce((a, x) => a + spreadPnl(x), 0);
-  const rules = [["5% out, about 5 weeks", sp.short_strike, sp.long_strike, sp.expiry]].concat((Array.isArray(sp.aggressive) ? sp.aggressive : []).flatMap((g) => [[g.name, g.short_strike, g.long_strike, g.expiry]].concat(
+  const rules = (sp.retired ? [] : [["5% out, about 5 weeks", sp.short_strike, sp.long_strike, sp.expiry]]).concat((Array.isArray(sp.aggressive) ? sp.aggressive : []).flatMap((g) => [[g.name, g.short_strike, g.long_strike, g.expiry]].concat(
       g.alt ? [[(g.alt.distance * 100).toFixed(0) + "% out, " + g.name.split(", ")[1], g.alt.short_strike, g.alt.long_strike, g.expiry]] : [])));
   return '<div class="sec-head"><h3 style="font-size:15px">Your open spreads</h3><span class="count ' + (open.length ? "on" : "") + '">' + open.length + " of " + max + "</span></div>"
     + (cards || '<p class="why">None open. When a signal below fires and you enter it in Robinhood, log it here so the dashboard can track the slot and tell you when it is done.</p>')
@@ -828,10 +835,10 @@ function wireSpreadBook() {
 function aggressiveSpread(sp) {
   const list = Array.isArray(sp.aggressive) ? sp.aggressive : [];
   if (!list.length) return "";
-  return '<h3 style="font-size:14px;margin-top:4px">Aggressive spreads, 2% out</h3>' + list.map((g) =>
+  return '<h3 style="font-size:14px;margin-top:4px">' + (sp.retired ? "The rule: 0.5% out (or 1%), about 6 weeks" : "Aggressive spreads, 2% out") + "</h3>" + list.map((g) =>
     '<div class="order' + (g.signal ? "" : " no") + '"><div class="line"><span class="big">' + esc(g.name) + "</span>" + info(g.note) + '<span class="pill ' + (g.signal ? "warn" : "") + '">' + (g.signal ? "Signal" : "No signal") + "</span></div>"
     + '<ul class="checks">' + g.checks.map((c) => '<li class="' + (c.met ? "yes" : "no") + '"><span class="mark">' + (c.met ? "✓" : "·") + "</span><span>" + esc(c.label) + ' <span class="muted">· ' + esc(c.detail) + "</span></span></li>").join("") + "</ul>"
-    + (g.signal ? roomNote(true) + '<div class="note warn">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $"
+    + (g.signal ? roomNote(true) + '<div class="note ' + (sp.retired ? "good" : "warn") + '">Sell the ' + g.short_strike + " put and buy the " + g.long_strike + " put, expiring " + esc(niceDay(g.expiry)) + " (" + g.days + " days), one contract, held to expiry. Most you can lose is about $"
         + sp.max_loss + ". Up to " + g.max_open + " open at once" + (g.min_gap_days > 1 ? ", at least " + g.min_gap_days + " days apart" : ", one new one a day at most") + ". Enter in the last 20 minutes of the day.</div>"
       : '<div class="why">Would be the ' + g.short_strike + " / " + g.long_strike + " put spread expiring " + esc(niceDay(g.expiry)) + ".</div>")
     + (g.alt ? '<div class="note"><b>Or ' + (g.alt.distance * 100).toFixed(0) + "% out: the " + g.alt.short_strike + " / " + g.alt.long_strike + " put spread, same expiry.</b> " + esc(g.alt.note) + "</div>" : "")
@@ -849,6 +856,11 @@ function spreadSection(sp) {
       + (sp.max_open ? " Up to " + sp.max_open + " spreads open at once, at least " + sp.min_gap_days + " days apart." : "") + "</div>"
       + '<div class="acts"><a class="btn" target="_blank" rel="noopener" href="https://robinhood.com/options/chains/' + esc(sp.symbol) + '">Open ' + esc(sp.symbol) + " options in Robinhood</a></div>"
     : '<p class="why">No trade today. It needs ' + sp.min_score + " of 6; this spread only had an edge when fear was elevated. If it fired now it would be the " + sp.short_strike + " / " + sp.long_strike + " put spread expiring " + esc(niceDay(sp.expiry)) + ".</p>";
+  const live = spreadLive(sp);
+  if (sp.retired) return '<section class="stack"><div class="sec-head"><h2>' + esc(sp.symbol) + ' put credit spread</h2>' + info("Sell a $1-wide SPY put spread 0.5% below the market (or 1% as the safer choice), expiring about six weeks out, held to expiry. Any day qualifies; the limits are 3 open at once and 3 days between entries. Tested on real option prices 2018-2026: about 22 a year, 77% win, about +$250 a year for one contract, worst drop -$704. It is a steady bet that SPY does not fall much over six weeks, so it loses in a bear year like 2022.")
+    + '<span class="count ' + (live ? "on" : "") + '">' + (live ? "slot open" : openSpreads().length >= maxSpreads() ? "full" : "wait") + "</span></div>"
+    + '<div class="card">' + spreadBook(sp) + "</div>"
+    + '<div class="card"><div class="top"><div class="name"><span class="sym">' + esc(sp.symbol) + '</span><span class="muted" style="font-size:13px">' + usd(sp.price) + "</span></div></div>" + aggressiveSpread(sp) + "</div></section>";
   return '<section class="stack"><div class="sec-head"><h2>' + esc(sp.symbol) + ' put credit spread</h2><span class="count ' + (sp.signal ? "on" : "") + '">' + (sp.signal ? "signal" : "no signal") + "</span></div>"
     + '<div class="card">' + spreadBook(sp) + "</div>"
     + '<div class="card"><div class="top"><div class="name"><span class="sym">' + esc(sp.symbol) + '</span><span class="muted" style="font-size:13px">' + usd(sp.price) + "</span></div>" + meter(sp.score, level) + "</div>"
