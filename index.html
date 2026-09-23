@@ -253,6 +253,30 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
 @media (prefers-reduced-motion: no-preference) { .progress > i { transition: width .3s ease; } }
 .rangebar{position:relative;height:34px;margin:6px 0 2px}.rangebar .wide{position:absolute;left:0;right:0;top:12px;height:8px;border-radius:4px;background:var(--hair)}.rangebar .likely{position:absolute;top:10px;height:12px;border-radius:6px;background:var(--series);opacity:.55}.rangebar .mark{position:absolute;top:6px;width:3px;height:20px;margin-left:-1px;border-radius:2px;background:var(--ink)}.rangebar .lo,.rangebar .hi{position:absolute;top:24px;font-size:11px;color:var(--muted)}.rangebar .hi{right:0}
 .info{position:relative;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid var(--axis);color:var(--muted);font:600 11px/1 system-ui,sans-serif;cursor:help;vertical-align:middle;margin-left:4px;outline:none}.info:hover,.info:focus{color:var(--ink);border-color:var(--ink)}.info .tip{display:none;position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);z-index:5;width:min(320px,80vw);padding:10px 12px;border-radius:8px;background:var(--ink);color:var(--ground);font:400 13px/1.45 inherit;text-align:left;white-space:normal;box-shadow:0 6px 24px rgba(0,0,0,.18)}.info:hover .tip,.info:focus .tip,.info:focus-within .tip{display:block}.sec-head .info{margin-left:-2px}
+
+/* ---------- gamma levels (own section, own data) ---------- */
+#p-gamma { --gx-pos: #2a78d6; --gx-neg: #d97706; }
+#p-gamma .hero.good { box-shadow: inset 4px 0 0 var(--good); } #p-gamma .hero.bad { box-shadow: inset 4px 0 0 var(--bad); }
+@media (prefers-color-scheme: dark) { #p-gamma { --gx-pos: #5b9ce8; --gx-neg: #f5a524; } }
+.gx-three { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.gx-levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.gx-lv { border: 1px solid var(--hair); border-radius: 10px; padding: 8px 10px; display: grid; gap: 2px; }
+.gx-lv .k { font-size: 11px; color: var(--muted); } .gx-lv .v { font: 600 17px var(--mono); } .gx-lv .d { font-size: 11px; color: var(--ink-2); }
+.gx-lv.call { border-color: var(--gx-pos); } .gx-lv.put { border-color: var(--gx-neg); } .gx-lv.flip { border-color: var(--accent); }
+.gx-legend i { width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; }
+.gx-chart .grid { stroke: var(--hair); } .gx-chart .zero { stroke: var(--axis); }
+.gx-chart .bar.pos { fill: var(--gx-pos); } .gx-chart .bar.neg { fill: var(--gx-neg); }
+.gx-chart .hit { fill: transparent; }
+.gx-chart .lbl { fill: var(--ink-2); font-weight: 600; }
+.gx-chart .spot { stroke: var(--ink); stroke-width: 1.5; }
+.gx-chart .flip { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.gx-chart .wall.call { stroke: var(--gx-pos); stroke-width: 1.5; stroke-dasharray: 2 3; }
+.gx-chart .wall.put { stroke: var(--gx-neg); stroke-width: 1.5; stroke-dasharray: 2 3; }
+.gx-chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.gx-chart .line.pos { stroke: var(--gx-pos); } .gx-chart .line.neg { stroke: var(--gx-neg); }
+.gx-item { border: 1px solid var(--hair); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; font-size: 14px; }
+.gx-item .k { font-weight: 600; } .gx-item .tag { font-size: 12px; color: var(--muted); }
+#gxTip { position: fixed; z-index: 9; pointer-events: none; background: var(--ink); color: var(--ground); font: 12px/1.4 var(--sans); padding: 6px 9px; border-radius: 6px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -279,6 +303,9 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
       <button class="tab" role="tab" data-tab="strategy" aria-selected="false">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h8.5a1.5 1.5 0 011.5 1.5v11.5H6.5A1.5 1.5 0 015 15V3.5z"/><path d="M8 7.5h4M8 10.5h4"/></svg>
         <span>Strategy</span></button>
+      <button class="tab" role="tab" data-tab="gamma" aria-selected="false">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10h13"/><path d="M6 10V6.5M9 10V4.5M12 10v3.5M15 10v5"/></svg>
+        <span>Gamma</span></button>
     </nav>
   </div>
 </header>
@@ -375,10 +402,17 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
     <h1>The strategy</h1>
     <div id="aboutBody" class="stack-lg"><p class="sub">Loading…</p></div>
   </section>
+  <section id="p-gamma" class="stack-lg" data-page hidden>
+    <div class="sec-head"><h1>Gamma levels</h1><span id="gxStamp" class="sub muted spacer"></span></div>
+    <p class="sub">Dealer gamma exposure for SPY, SPX and QQQ from free option chains. A separate experiment from the dip strategy: it only collects data and keeps score until a rule proves itself.</p>
+    <div class="row" id="gxViews"></div>
+    <div id="gammaBody" class="stack-lg"><p class="sub">Loading…</p></div>
+  </section>
 </main>
 </div>
 <dialog id="tradeDlg" aria-labelledby="tradeTitle"><div class="in" id="tradeBody"></div></dialog>
 <div id="toast" hidden role="status"></div>
+<div id="gxTip" hidden></div>
 
 <script>
 "use strict";
@@ -493,7 +527,7 @@ function showConnect(on) {
   $("connect").hidden = !on;
   $("cfgOwner").value = cfg.owner || ""; $("cfgRepo").value = cfg.repo || "robinhood-bot"; $("cfgToken").value = cfg.token || ""; $("cfgTrade").value = cfg.tradeToken || "";
 }
-function renderAll() { renderToday(); renderPositions(); renderJournal(); renderStudies(); renderStrategy(); }
+function renderAll() { renderToday(); renderPositions(); renderJournal(); renderStudies(); renderStrategy(); gx.refresh(); }
 
 /* ---------------- shared pieces ---------------- */
 function meter(score, level, of = 6) {
@@ -1153,14 +1187,271 @@ function renderStrategy() {
     + '<div class="two"><div class="panel stack"><h2>Rules to stick to</h2>' + li(a.rules) + '</div><div class="panel stack"><h2>Keep in mind</h2>' + li(a.caveats) + "</div></div>";
 }
 
+/* ---------------- gamma levels: a separate section with its own data (data/gamma/) ----------------
+   Everything here lives in its own scope so it shares nothing with the dip pages except the
+   token, the JSON reader and the page chrome. */
+const gx = (function () {
+  const G = { loaded: false, latest: null, scorecard: null, playbook: null, studies: null, trades: [], history: [], view: "today", sym: "SPY" };
+  try { G.view = localStorage.getItem("dipdesk-gamma-view") || "today"; } catch (e) { /* ignore */ }
+  const money = (x) => { if (x == null) return "–"; const a = Math.abs(x); const s = a >= 1e9 ? "$" + (a / 1e9).toFixed(1) + "bn" : "$" + Math.round(a / 1e6) + "m"; return (x < 0 ? "-" : "") + s; };
+  const lvl = (x) => x == null ? "–" : (Math.abs(x) >= 1000 ? Math.round(x).toString() : (Math.round(x * 100) / 100).toString());
+  const pc = (x, d = 2) => x == null ? "–" : (x > 0 ? "+" : "") + x.toFixed(d) + "%";
+  const nm = (x, d = 0) => x == null ? "–" : x.toFixed(d);
+  const cl = (x) => x > 0 ? "up" : x < 0 ? "down" : "";
+  const VIEWS = [["today", "Today"], ["levels", "Levels"], ["scorecard", "Scorecard"], ["playbook", "Playbook"], ["studies", "Studies"]];
+
+  async function load() {
+    const body = $("gammaBody");
+    try {
+      const [latest, scorecard, playbook, studies, trades, history] = await Promise.all([
+        getJSON("data/gamma/latest.json", null), getJSON("data/gamma/scorecard.json", null), getJSON("data/gamma/playbook.json", null),
+        getJSON("data/gamma/studies.json", null), getJSON("data/gamma/trades.json", []), getJSON("data/gamma/history.json", [])]);
+      Object.assign(G, { loaded: true, latest: latest.data, scorecard: scorecard.data, playbook: playbook.data, studies: studies.data, trades: trades.data || [], history: history.data || [] });
+      render();
+    } catch (e) { body.innerHTML = '<div class="note bad">' + esc(e.message) + "</div>"; }
+  }
+  function show() { if (!G.loaded) { $("gammaBody").innerHTML = '<p class="sub">Loading…</p>'; load(); } else render(); }
+  function refresh() { if (G.loaded) load(); }
+
+  function render() {
+    const L = G.latest;
+    $("gxStamp").textContent = L ? L.as_of + " · " + L.when + " · run " + L.run_at.slice(11) + " ET" : "no levels yet";
+    $("gxViews").innerHTML = VIEWS.map(([k, label]) => '<button class="chip" data-gxview="' + k + '" aria-pressed="' + (G.view === k) + '">' + label + "</button>").join("");
+    $("gxViews").querySelectorAll("[data-gxview]").forEach((b) => b.addEventListener("click", () => { G.view = b.dataset.gxview; try { localStorage.setItem("dipdesk-gamma-view", G.view); } catch (e) { /* ignore */ } render(); }));
+    ({ today: vToday, levels: vLevels, scorecard: vScore, playbook: vPlaybook, studies: vStudies }[G.view] || vToday)();
+  }
+
+  /* ---- today ---- */
+  const regimePill = (r) => r === "positive" ? '<span class="pill good">positive gamma</span>' : '<span class="pill bad">negative gamma</span>';
+  function whenText(L) {
+    if (L.when === "pre-open") return "Levels for today, from last night's open interest and this morning's price.";
+    if (L.when === "session") return "Levels for today, refreshed during the session at " + L.run_at.slice(11) + " ET.";
+    return "Preliminary levels for " + niceDay(L.as_of) + " from tonight's close. They are refreshed at about 9:05am ET.";
+  }
+  const runRow = () => (LOCAL || !cfg.token) ? "" : '<div class="row"><span class="sub muted">The cloud job runs at about 9:05am and 4:35pm ET, separately from the screener.</span><button class="small spacer" id="gxRun">Run now</button></div>';
+  function vToday() {
+    const L = G.latest, body = $("gammaBody");
+    if (!L) { body.innerHTML = '<div class="hero warn"><div class="when">No levels yet</div><div class="say">Press Run now, or wait for the 9:05am ET job.</div></div>' + runRow(); wire(); return; }
+    const S = L.symbols.SPY, X = L.symbols.SPX, Q = L.symbols.QQQ, lead = S || X || Q;
+    let tone = "warn", say, facts = [];
+    if (S && X && S.regime === X.regime) {
+      if (S.regime === "positive") { tone = "good"; say = "Range day. Dealers are long gamma: dips to the put wall are buys, rallies into the call wall are where to take profit. Do not chase."; }
+      else { tone = "bad"; say = "Trend day. Dealers are short gamma: do not fade moves. Trade the flip: a reclaim is long, a loss is short, with a tight stop and smaller size."; }
+    } else if (S && X) say = "Mixed. SPY options say " + S.regime + " gamma, SPX options say " + X.regime + ". Treat it as a range day, but with the stop at the flip rather than beyond the wall.";
+    else { say = lead.read; tone = lead.regime === "positive" ? "good" : "bad"; }
+    if (S) facts = [["SPY", lvl(S.spot)], ["flip", lvl(S.flip) + (S.dist_to_flip_pct != null ? " (" + pc(S.dist_to_flip_pct, 1) + ")" : "")], ["put wall", lvl(S.put_wall)], ["call wall", lvl(S.call_wall)], ["expected move", S.exp_move_pct != null ? "±" + S.exp_move_pct.toFixed(1) + "%" : "–"]];
+    body.innerHTML =
+      '<div class="hero ' + tone + '"><div class="when">' + esc(whenText(L)) + '</div><div class="say">' + esc(say) + '</div><div class="facts">' + facts.map(([k, v]) => '<span class="pill">' + esc(k) + " <b>" + esc(v) + "</b></span>").join("") + "</div></div>"
+      + runRow()
+      + '<div class="gx-three">' + ["SPY", "SPX", "QQQ"].filter((s) => L.symbols[s]).map((s) => symCard(L.symbols[s])).join("") + "</div>"
+      + '<div class="two"><div class="panel stack"><h2>How to use today</h2>' + howTo(S || lead) + "</div>"
+      + '<div class="panel stack"><h2>Where the numbers come from</h2><p class="sub">Open interest, implied vol and greeks for every listed contract come from CBOE\'s free delayed feed (a snapshot from the previous close, which is what every gamma service uses). The live price comes from Yahoo. Gamma is recomputed per contract at the live price and summed by strike; the flip is where the total would cross zero. Calls count positive and puts negative, the usual dealer assumption.</p>'
+      + '<p class="sub muted">SPX levels are roughly 10x SPY levels; the two chains can disagree because they hold different customers. SPX carries most of the index gamma.</p></div></div>';
+    wire();
+  }
+  function wire() { const b = $("gxRun"); if (b) b.addEventListener("click", runNow); }
+  function symCard(o) {
+    const d = (x) => x == null || !o.spot ? "" : pc((x / o.spot - 1) * 100, 1) + " away";
+    const b0 = o.buckets && o.buckets["0dte"];
+    return '<div class="card"><div class="top"><div class="name"><span class="sym">' + esc(o.sym) + '</span><span class="muted">' + lvl(o.spot) + "</span></div>" + regimePill(o.regime) + "</div>"
+      + '<div class="gx-levels"><div class="gx-lv call"><span class="k">Call wall</span><span class="v">' + lvl(o.call_wall) + '</span><span class="d">' + d(o.call_wall) + "</span></div>"
+      + '<div class="gx-lv flip"><span class="k">Gamma flip</span><span class="v">' + lvl(o.flip) + '</span><span class="d">' + d(o.flip) + "</span></div>"
+      + '<div class="gx-lv put"><span class="k">Put wall</span><span class="v">' + lvl(o.put_wall) + '</span><span class="d">' + d(o.put_wall) + "</span></div></div>"
+      + '<div class="stats"><div class="stat"><div class="k">Net GEX / 1%</div><div class="v ' + cl(o.net_gex) + '">' + money(o.net_gex) + "</div></div>"
+      + '<div class="stat"><div class="k">Magnet</div><div class="v">' + lvl(o.magnet) + "</div></div>"
+      + '<div class="stat"><div class="k">Expected move</div><div class="v">' + (o.exp_move_pct != null ? "±" + o.exp_move_pct.toFixed(1) + "%" : "–") + "</div></div>"
+      + (b0 ? '<div class="stat"><div class="k">0DTE walls</div><div class="v">' + lvl(b0.put_wall) + " / " + lvl(b0.call_wall) + "</div></div>" : "") + "</div>"
+      + '<p class="sub">' + esc(o.read) + "</p></div>";
+  }
+  function howTo(o) {
+    if (!o) return "";
+    const rules = o.regime === "positive" ? [
+      "Dips toward the put wall at <b>" + lvl(o.put_wall) + "</b> are the buy. Stop about 0.4% below it. Target the previous close, then the call wall.",
+      "Rallies into the call wall at <b>" + lvl(o.call_wall) + "</b> are where to take profit, sell calls, or open a short via a call credit spread.",
+      "Losing the flip at <b>" + lvl(o.flip) + "</b> ends the range-day plan: stop fading and switch to the trend rules.",
+      "Dip trades are in their friendliest regime today: dealers buy dips too.",
+    ] : [
+      "Do not buy the first dip. Below the flip at <b>" + lvl(o.flip) + "</b> dealers sell into weakness, so moves extend.",
+      "A 5-minute close back above the flip is the long signal, stop 0.3% below it, target the call wall at <b>" + lvl(o.call_wall) + "</b>.",
+      "A break of the put wall at <b>" + lvl(o.put_wall) + "</b> is where selling accelerates: no knife-catching there.",
+      "Halve the size on anything, including the dip trades. Expect the expected move to be exceeded.",
+    ];
+    return '<ul class="rules">' + rules.map((r) => "<li>" + r + "</li>").join("") + "</ul>";
+  }
+  async function runNow() {
+    const btn = $("gxRun"); if (!btn) return; btn.disabled = true; btn.textContent = "Starting…";
+    try {
+      const res = await gh("/actions/workflows/gamma.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: cfg.branch || "main" }) });
+      if (!res.ok) throw new Error("Could not start the gamma job (" + res.status + ").");
+      toast("Started. It takes about two minutes.");
+      const before = Date.now();
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 10000));
+        const b = $("gxRun"); if (b) b.textContent = "Running… " + Math.round((Date.now() - before) / 1000) + "s";
+        const runs = await (await gh("/actions/workflows/gamma.yml/runs?per_page=1&event=workflow_dispatch")).json();
+        const run = runs.workflow_runs && runs.workflow_runs[0];
+        if (run && new Date(run.created_at).getTime() > before - 60000 && run.status === "completed") { await load(); toast(run.conclusion === "success" ? "Gamma levels updated." : "The job finished with an error; see GitHub Actions."); return; }
+      }
+      toast("Still running. Press Refresh in a minute.");
+    } catch (e) { toast(e.message); const b = $("gxRun"); if (b) { b.disabled = false; b.textContent = "Run now"; } }
+  }
+
+  /* ---- levels ---- */
+  function vLevels() {
+    const L = G.latest, body = $("gammaBody");
+    if (!L) { body.innerHTML = '<p class="sub">No levels yet.</p>'; return; }
+    const syms = ["SPY", "SPX", "QQQ"].filter((s) => L.symbols[s]);
+    if (!L.symbols[G.sym]) G.sym = syms[0];
+    const o = L.symbols[G.sym], bk = o.buckets || {};
+    const bucketRow = (name, label) => { const b = bk[name]; return b ? "<tr><td>" + label + '</td><td class="num ' + cl(b.net_gex) + '">' + money(b.net_gex) + '</td><td class="num">' + lvl(b.put_wall) + '</td><td class="num">' + lvl(b.call_wall) + '</td><td class="num">' + lvl(b.magnet) + '</td><td class="num">' + b.contracts + "</td></tr>" : ""; };
+    body.innerHTML =
+      '<div class="row">' + syms.map((s) => '<button class="chip" data-gxsym="' + s + '" aria-pressed="' + (G.sym === s) + '">' + s + "</button>").join("") + "</div>"
+      + '<div class="panel stack"><div class="sec-head"><h3>' + esc(o.sym) + " net gamma by strike</h3>" + regimePill(o.regime) + '<span class="muted spacer">spot ' + lvl(o.spot) + "</span></div>"
+      + '<div class="legend gx-legend"><span><i style="background:var(--gx-pos)"></i>Call gamma (dealers long: damps moves)</span><span><i style="background:var(--gx-neg)"></i>Put gamma (dealers short: amplifies moves)</span><span><i style="background:var(--ink)"></i>Spot</span><span><i style="background:var(--accent)"></i>Flip</span></div>'
+      + '<div class="chart gx-chart">' + bars(o) + "</div>"
+      + '<p class="sub muted">Bars are the net dollar gamma per 1% move at each strike, all expiries, within 8% of spot. Hover a bar for the call and put sides.</p></div>'
+      + '<div class="two"><div class="panel stack"><h3>Where the total flips</h3><div class="chart gx-chart">' + profile(o) + "</div>"
+      + '<p class="sub muted">Total net gamma if spot were at each price. The flip is where it crosses zero' + (o.flip ? ", at " + lvl(o.flip) : ", not within 6% of spot") + ".</p></div>"
+      + '<div class="panel stack"><h3>By expiry bucket</h3><div class="scroll"><table><thead><tr><th>Bucket</th><th class="num">Net GEX</th><th class="num">Put wall</th><th class="num">Call wall</th><th class="num">Magnet</th><th class="num">Contracts</th></tr></thead><tbody>'
+      + bucketRow("0dte", "Today") + bucketRow("week", "≤ 1 week") + bucketRow("month", "≤ 35 days") + bucketRow("all", "All") + "</tbody></table></div>"
+      + '<p class="sub muted">The same-day bucket moves the most intraday and is the one 0DTE traders watch. Walls: biggest call strike above spot, biggest put strike below.</p></div></div>'
+      + '<div class="two"><div class="panel stack"><h3>Biggest strikes</h3><div class="scroll"><table><thead><tr><th class="num">Strike</th><th class="num">Net</th><th class="num">Calls</th><th class="num">Puts</th></tr></thead><tbody>'
+      + (o.top || []).map((r) => '<tr><td class="num">' + lvl(r.strike) + '</td><td class="num ' + cl(r.net) + '">' + money(r.net) + '</td><td class="num">' + money(r.call) + '</td><td class="num">' + money(r.put) + "</td></tr>").join("") + "</tbody></table></div></div>"
+      + '<div class="panel stack"><h3>Expiries that matter</h3><div class="scroll"><table><thead><tr><th>Expiry</th><th class="num">Days</th><th class="num">Net GEX</th><th class="num">Open interest</th></tr></thead><tbody>'
+      + (o.expiries || []).map((r) => "<tr><td>" + niceDay(r.expiry) + '</td><td class="num">' + r.dte + '</td><td class="num ' + cl(r.net_gex) + '">' + money(r.net_gex) + '</td><td class="num">' + r.oi.toLocaleString() + "</td></tr>").join("") + "</tbody></table></div></div></div>";
+    body.querySelectorAll("[data-gxsym]").forEach((b) => b.addEventListener("click", () => { G.sym = b.dataset.gxsym; vLevels(); }));
+    tips(body);
+  }
+  function ticks(a, b, n) {
+    const span = b - a || 1, raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+    const step = (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p, out = [];
+    for (let t = Math.ceil(a / step) * step; t <= b + 1e-9; t += step) out.push(+t.toFixed(6));
+    return out;
+  }
+  function bars(o) {
+    const rows = (o.chart || []).slice().sort((a, b) => a.strike - b.strike);
+    if (!rows.length) return '<p class="sub">No strikes.</p>';
+    const W = 860, H = 320, L = 8, R = 8, T = 40, B = 28, w = W - L - R, h = H - T - B;
+    const xs = rows.map((r) => r.strike), x0 = Math.min(...xs), x1 = Math.max(...xs);
+    const X = (v) => L + (v - x0) / (x1 - x0 || 1) * w;
+    const m = Math.max(...rows.map((r) => Math.abs(r.net))) || 1;
+    const Y = (v) => T + h / 2 - v / m * (h / 2 - 4);
+    const step = rows.length > 1 ? Math.min(...rows.slice(1).map((r, i) => X(r.strike) - X(rows[i].strike))) : w;
+    const bw = Math.max(2, Math.min(14, step * 0.7));
+    let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Net gamma by strike">';
+    s += '<line class="zero" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(0) + '" y2="' + Y(0) + '"/>';
+    ticks(x0, x1, 8).forEach((t) => { s += '<line class="grid" x1="' + X(t) + '" x2="' + X(t) + '" y1="' + T + '" y2="' + (T + h) + '"/><text x="' + X(t) + '" y="' + (H - 8) + '" text-anchor="middle">' + lvl(t) + "</text>"; });
+    rows.forEach((r) => {
+      const x = X(r.strike) - bw / 2, y = Math.min(Y(0), Y(r.net)), hh = Math.abs(Y(r.net) - Y(0));
+      s += '<rect class="hit" data-gxtip="' + esc(lvl(r.strike) + " · net " + money(r.net) + " · calls " + money(r.call) + " · puts " + money(r.put)) + '" x="' + (X(r.strike) - Math.max(bw, step) / 2) + '" y="' + T + '" width="' + Math.max(bw, step) + '" height="' + h + '"/>';
+      s += '<rect class="bar ' + (r.net >= 0 ? "pos" : "neg") + '" x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(hh, 1) + '" rx="1.5"/>';
+    });
+    const vline = (v, c, label, side, row) => { if (v == null || v < x0 || v > x1) return ""; const x = X(v); return '<line class="' + c + '" x1="' + x + '" x2="' + x + '" y1="' + (T - 4) + '" y2="' + (T + h) + '"/><text class="lbl" x="' + (x + (side < 0 ? -4 : 4)) + '" y="' + (row ? T - 6 : T - 22) + '" text-anchor="' + (side < 0 ? "end" : "start") + '">' + esc(label) + "</text>"; };
+    s += vline(o.put_wall, "wall put", "put wall " + lvl(o.put_wall), -1, 0) + vline(o.call_wall, "wall call", "call wall " + lvl(o.call_wall), 1, 0)
+       + vline(o.flip, "flip", "flip " + lvl(o.flip), o.flip < o.spot ? -1 : 1, 1) + vline(o.spot, "spot", "spot " + lvl(o.spot), o.flip && o.flip < o.spot ? 1 : -1, 1);
+    return s + "</svg>";
+  }
+  function profile(o) {
+    const pts = o.profile || [];
+    if (pts.length < 2) return '<p class="sub">No profile.</p>';
+    const W = 420, H = 200, L = 8, R = 8, T = 14, B = 26, w = W - L - R, h = H - T - B;
+    const x0 = pts[0][0], x1 = pts[pts.length - 1][0], m = Math.max(...pts.map((p) => Math.abs(p[1]))) || 1;
+    const X = (v) => L + (v - x0) / (x1 - x0) * w, Y = (v) => T + h / 2 - v / m * (h / 2 - 4);
+    let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Net gamma against spot price">';
+    s += '<line class="zero" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(0) + '" y2="' + Y(0) + '"/>';
+    ticks(x0, x1, 5).forEach((t) => { s += '<text x="' + X(t) + '" y="' + (H - 8) + '" text-anchor="middle">' + lvl(t) + "</text>"; });
+    s += '<path class="line pos" d="' + pts.map((p, i) => (i ? "L" : "M") + X(p[0]) + " " + Y(p[1])).join(" ") + '"/>';
+    if (o.flip != null && o.flip >= x0 && o.flip <= x1) s += '<line class="flip" x1="' + X(o.flip) + '" x2="' + X(o.flip) + '" y1="' + T + '" y2="' + (T + h) + '"/><text class="lbl" x="' + (X(o.flip) + 4) + '" y="' + (T + 10) + '">flip ' + lvl(o.flip) + "</text>";
+    if (o.spot >= x0 && o.spot <= x1) s += '<line class="spot" x1="' + X(o.spot) + '" x2="' + X(o.spot) + '" y1="' + T + '" y2="' + (T + h) + '"/><text class="lbl" x="' + (X(o.spot) + 4) + '" y="' + (T + h - 6) + '">spot</text>';
+    return s + "</svg>";
+  }
+  function tips(root) {
+    const tip = $("gxTip");
+    root.querySelectorAll("[data-gxtip]").forEach((el) => {
+      el.addEventListener("mousemove", (ev) => { tip.textContent = el.dataset.gxtip; tip.hidden = false; tip.style.left = Math.min(ev.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (ev.clientY + 14) + "px"; });
+      el.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+  }
+
+  /* ---- scorecard ---- */
+  function vScore() {
+    const c = G.scorecard, body = $("gammaBody");
+    if (!c) { body.innerHTML = '<div class="note">Nothing scored yet. The first score arrives after the first full trading day the levels were recorded for.</div>'; return; }
+    const early = c.days_scored < c.min_days || c.trades < c.min_trades;
+    const bar = (v, max, label) => '<div class="stack" style="gap:4px"><div class="row" style="font-size:13px"><span>' + label + '</span><span class="spacer muted">' + v + " / " + max + '</span></div><div class="progress"><i style="width:' + Math.min(100, 100 * v / max) + '%"></i></div></div>';
+    const rateTd = (r) => r && r.held_pct != null ? '<td class="num">' + r.held + "/" + r.touched + ' <span class="muted">(' + r.held_pct + "%)</span></td>" : '<td class="num muted">' + (r ? r.touched : 0) + " touched</td>";
+    const order = ["SPY", "SPX", "QQQ"];
+    const symRows = Object.entries(c.by_sym || {}).sort((a, b) => (order.indexOf(a[0]) + 1 || 9) - (order.indexOf(b[0]) + 1 || 9));
+    const regime = (s, r) => { const x = s.regime[r]; return "<tr><td>" + r + ' gamma</td><td class="num">' + x.days + '</td><td class="num">' + nm(x.avg_abs_move, 2) + '</td><td class="num">' + nm(x.avg_range, 2) + '</td><td class="num">' + (x.beyond_expected_pct != null ? x.beyond_expected_pct + "%" : "–") + '</td><td class="num">' + (x.flip_same_side_pct != null ? x.flip_same_side_pct + "%" : "–") + "</td></tr>"; };
+    const R = c.rules || {};
+    const ruleRow = (k, label) => { const r = R[k]; if (!r) return ""; return "<tr><td>" + label + '</td><td class="num">' + r.trades + '</td><td class="num">' + (r.win_pct != null ? r.win_pct + "%" : "–") + '</td><td class="num ' + cl(r.avg_pct) + '">' + (r.avg_pct != null ? pc(r.avg_pct, 3) : "–") + '</td><td class="num ' + cl(r.total_pct) + '">' + pc(r.total_pct) + '</td><td class="num muted">' + r.by_reason.target + " / " + r.by_reason.stop + " / " + r.by_reason.close + "</td></tr>"; };
+    const recent = G.history.filter((h) => h.outcome).slice(-30).reverse();
+    const yn = (t) => t ? (t.touched ? (t.held ? '<span class="up">held</span>' : '<span class="down">broke</span>') : '<span class="muted">no touch</span>') : "–";
+    body.innerHTML =
+      '<div class="note ' + (early ? "" : "good") + '">' + esc(c.verdict) + "</div>"
+      + '<div class="two">' + bar(c.days_scored, c.min_days, "Days scored") + bar(c.trades, c.min_trades, "Paper trades") + "</div>"
+      + symRows.map(([sym, s]) => '<div class="panel stack"><div class="sec-head"><h3>' + sym + '</h3><span class="count">' + s.days + " days</span></div>"
+        + '<div class="scroll"><table><thead><tr><th>Regime</th><th class="num">Days</th><th class="num">Avg move %</th><th class="num">Avg range %</th><th class="num">Beyond expected</th><th class="num">Closed same side of flip</th></tr></thead><tbody>' + regime(s, "positive") + regime(s, "negative") + "</tbody></table></div>"
+        + '<div class="scroll"><table><thead><tr><th>Level</th><th class="num">Held / touched</th><th>Plain level to beat</th><th class="num">Held / touched</th></tr></thead><tbody>'
+        + "<tr><td>Call wall</td>" + rateTd(s.walls.call) + "<td>Yesterday's high</td>" + rateTd(s.control.prev_high) + "</tr>"
+        + "<tr><td>Put wall</td>" + rateTd(s.walls.put) + "<td>Yesterday's low</td>" + rateTd(s.control.prev_low) + "</tr></tbody></table></div>"
+        + '<p class="sub muted">A wall "held" when price reached it and closed back on the inside. Negative-gamma days should show the bigger range and more days beyond the expected move; if they do not, the regime label is noise.</p></div>').join("")
+      + '<div class="panel stack"><h3>Paper rules</h3><div class="scroll"><table><thead><tr><th>Rule</th><th class="num">Trades</th><th class="num">Win</th><th class="num">Avg</th><th class="num">Total</th><th class="num">Target / stop / close</th></tr></thead><tbody>'
+      + ruleRow("R1", "R1 Wall fade (positive days)") + ruleRow("R2", "R2 Flip trend (negative days)") + "</tbody></table></div>"
+      + curve(R) + '<p class="sub muted">Each rule starts at $1,000, one position at a time, 0.02% slippage each way. Shorts are the level\'s edge; on Robinhood they would be an inverse fund or a call credit spread.</p></div>'
+      + '<div class="panel stack"><div class="sec-head"><h3>Recent days</h3><span class="count">' + recent.length + '</span></div><div class="scroll" style="max-height:50vh;overflow-y:auto"><table><thead><tr><th>Day</th><th>Sym</th><th>Regime</th><th class="num">Flip</th><th class="num">Put wall</th><th class="num">Call wall</th><th class="num">Close</th><th class="num">Move</th><th class="num">Range</th><th>Put wall</th><th>Call wall</th></tr></thead><tbody>'
+      + recent.map((h) => "<tr><td>" + niceDay(h.date) + "</td><td>" + h.sym + "</td><td>" + (h.regime === "positive" ? '<span class="up">+</span>' : '<span class="down">−</span>') + '</td><td class="num">' + lvl(h.flip) + '</td><td class="num">' + lvl(h.put_wall) + '</td><td class="num">' + lvl(h.call_wall) + '</td><td class="num">' + lvl(h.outcome.close) + '</td><td class="num ' + cl(h.outcome.ret_pct) + '">' + pc(h.outcome.ret_pct) + '</td><td class="num">' + nm(h.outcome.range_pct, 2) + "%</td><td>" + yn(h.outcome.put_wall) + "</td><td>" + yn(h.outcome.call_wall) + "</td></tr>").join("")
+      + "</tbody></table></div></div>"
+      + (G.trades.length ? '<div class="panel stack"><div class="sec-head"><h3>Paper trades</h3><span class="count">' + G.trades.length + '</span></div><div class="scroll" style="max-height:50vh;overflow-y:auto"><table><thead><tr><th>Day</th><th>Sym</th><th>Rule</th><th>Side</th><th>At</th><th class="num">Entry</th><th class="num">Exit</th><th>Out</th><th class="num">Result</th></tr></thead><tbody>'
+        + G.trades.slice().reverse().map((t) => "<tr><td>" + niceDay(t.date) + "</td><td>" + t.sym + "</td><td>" + t.rule + "</td><td>" + t.side + "</td><td>" + t.level + " " + t.time + '</td><td class="num">' + lvl(t.entry) + '</td><td class="num">' + lvl(t.exit) + "</td><td>" + t.reason + '</td><td class="num ' + cl(t.pct) + '">' + pc(t.pct, 2) + "</td></tr>").join("") + "</tbody></table></div></div>" : "");
+  }
+  function curve(R) {
+    const series = [["R1", "pos", (R.R1 || {}).curve || []], ["R2", "neg", (R.R2 || {}).curve || []]].filter((s) => s[2].length > 1);
+    if (!series.length) return "";
+    const W = 860, H = 200, L = 44, Rr = 8, T = 12, B = 24, w = W - L - Rr, h = H - T - B;
+    const all = series.flatMap((s) => s[2].map((p) => p[1])), lo = Math.min(1000, ...all), hi = Math.max(1000, ...all);
+    const n = Math.max(...series.map((s) => s[2].length));
+    const X = (i, len) => L + (len > 1 ? i / (len - 1) : 0) * w, Y = (v) => T + h - (v - lo) / (hi - lo || 1) * h;
+    let s = '<div class="chart gx-chart"><svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Paper rule results">';
+    ticks(lo, hi, 4).forEach((t) => { s += '<line class="grid" x1="' + L + '" x2="' + (W - Rr) + '" y1="' + Y(t) + '" y2="' + Y(t) + '"/><text x="' + (L - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end">$' + Math.round(t) + "</text>"; });
+    series.forEach(([k, c, pts]) => { s += '<path class="line ' + c + '" d="' + [[null, 1000]].concat(pts).map((p, i) => (i ? "L" : "M") + X(i, pts.length + 1) + " " + Y(p[1])).join(" ") + '"/><text class="lbl" x="' + (W - Rr) + '" y="' + (Y(pts[pts.length - 1][1]) - 4) + '" text-anchor="end">' + k + "</text>"; });
+    s += '<text x="' + L + '" y="' + (H - 6) + '">first trade</text><text x="' + (W - Rr) + '" y="' + (H - 6) + '" text-anchor="end">latest (' + n + " trades)</text>";
+    return s + '</svg></div><div class="legend gx-legend"><span><i style="background:var(--gx-pos)"></i>R1 wall fade</span><span><i style="background:var(--gx-neg)"></i>R2 flip trend</span></div>';
+  }
+
+  /* ---- playbook & studies ---- */
+  function vPlaybook() {
+    const p = G.playbook, body = $("gammaBody");
+    if (!p) { body.innerHTML = '<p class="sub">The playbook appears after the first job run.</p>'; return; }
+    const sec = (s, i) => '<details class="fold"' + (i === 0 ? " open" : "") + '><summary><span class="grow">' + esc(s.title) + '</span></summary><div class="in stack">'
+      + (s.note ? '<p class="sub muted">' + esc(s.note) + "</p>" : "") + (s.paras || []).map((t) => "<p>" + esc(t) + "</p>").join("")
+      + (s.bullets ? '<ul class="rules">' + s.bullets.map((b) => "<li>" + esc(b) + "</li>").join("") + "</ul>" : "")
+      + (s.items ? '<div class="stack">' + s.items.map((it) => '<div class="gx-item"><div class="k">' + esc(it.name) + "</div><div>" + esc(it.how) + "</div>" + (it.who ? '<div class="sub">' + esc(it.who) + "</div>" : "") + '<div class="tag"><b>Free here?</b> ' + esc(it.free) + "</div></div>").join("") + "</div>" : "")
+      + "</div></details>";
+    body.innerHTML = "<p>" + esc(p.intro) + '</p><div class="stack" style="gap:8px">' + p.sections.map(sec).join("") + "</div>";
+  }
+  const GV = { adopted: ["good", "Adopted"], rejected: ["bad", "Rejected"], running: ["warn", "Running"], optional: ["warn", "Optional"], info: ["", "For information"] };
+  function vStudies() {
+    const d = G.studies, body = $("gammaBody");
+    if (!d) { body.innerHTML = '<p class="sub">The list of gamma studies appears after the first job run.</p>'; return; }
+    body.innerHTML = '<div class="note">' + esc(d.method) + "</div>"
+      + '<div class="stack" style="gap:8px">' + d.studies.map((s) => { const v = GV[s.verdict] || ["", s.verdict];
+        return '<details class="fold"><summary><span class="grow">' + esc(s.title) + '</span><span class="pill ' + v[0] + '">' + esc(v[1]) + '</span></summary><div class="in stack"><p>' + esc(s.takeaway) + "</p>"
+          + "<dl><dt>Question</dt><dd>" + esc(s.question) + "</dd><dt>Tested</dt><dd>" + esc(s.tested) + "</dd><dt>Result</dt><dd>" + esc(s.result) + '</dd></dl><p class="sub muted" style="font-size:12px">' + esc(s.area) + " · " + esc(s.script) + "</p></div></details>"; }).join("") + "</div>"
+      + '<p class="sub muted">These are kept apart from the dip studies on the Studies page: they are a forward test of a different idea.</p>';
+  }
+  return { show, refresh };
+})();
+
 /* ---------------- wiring ---------------- */
-const TABS = ["today", "positions", "journal", "studies", "strategy"];
+const TABS = ["today", "positions", "journal", "studies", "strategy", "gamma"];
 const OLD = { screener: "today", trade: "positions", about: "strategy" };
 function showTab(name) {
   name = OLD[name] || name; if (!TABS.includes(name)) name = "today";
   document.querySelectorAll("[data-page]").forEach((p) => { p.hidden = p.id !== "p-" + name; });
   document.querySelectorAll("button.tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
   if (name === "journal") { if (state.review && state.review.n_closed) drawChart(state.review.closed); }   // charts need a visible width
+  if (name === "gamma") gx.show();
   try { localStorage.setItem("dipdesk-tab", name); } catch (e) { /* private mode */ }
   window.scrollTo(0, 0);
 }
