@@ -436,7 +436,7 @@ const niceDay = (iso) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US"
 
 let cfg = {};
 try { cfg = JSON.parse(localStorage.getItem("dipdesk") || "{}"); } catch (e) { cfg = {}; }
-const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, equity: [], spreads: [], autopilot: [], settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
+const state = { screen: null, trades: [], tradesSha: null, signals: [], review: null, about: null, account: null, studies: null, equity: [], spreads: [], autopilot: [], rh: null, settings: { account: 1000, default_dollars: 67 }, settingsSha: null };
 const canTrade = () => !!(cfg.tradeToken && !LOCAL);
 
 function toast(msg) {
@@ -513,12 +513,12 @@ async function loadAll() {
   if (!cfg.token && !LOCAL) { showConnect(true); return; }
   $("conn").textContent = "loading…";
   try {
-    const [screen, trades, signals, review, about, settings, account, studies, equity, spreads, autopilot] = await Promise.all([
+    const [screen, trades, signals, review, about, settings, account, studies, equity, spreads, autopilot, rhStatus] = await Promise.all([
       getJSON("data/screen_latest.json", null), getJSON("data/trades.json", []),
       getJSON("data/signals.json", []), getJSON("data/review.json", null),
-      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null), getJSON("data/equity.json", []), getJSON("data/spreads.json", []), getJSON("data/autopilot.json", [])]);
+      getJSON("data/about.json", null), getJSON("data/settings.json", state.settings), getJSON("data/account.json", null), getJSON("data/studies.json", null), getJSON("data/equity.json", []), getJSON("data/spreads.json", []), getJSON("data/autopilot.json", []), getJSON("data/rh_status.json", null)]);
     Object.assign(state, { screen: screen.data, trades: trades.data, tradesSha: trades.sha, signals: signals.data,
-      review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], spreads: spreads.data || [], autopilot: autopilot.data || [], settings: settings.data, settingsSha: settings.sha });
+      review: review.data, about: about.data, account: account.data, studies: studies.data, equity: equity.data || [], spreads: spreads.data || [], autopilot: autopilot.data || [], rh: rhStatus.data, settings: settings.data, settingsSha: settings.sha });
     $("conn").textContent = LOCAL ? "local preview" : "connected";
     showConnect(false); renderAll(); setTimeout(autoRun, 800);
   } catch (e) { $("conn").textContent = "not connected"; toast(e.message); showConnect(true); }
@@ -704,6 +704,33 @@ function situation() {
     sub: fresh ? "Log any buys you made today on the Positions page." : "No list was produced today. The last one is from " + niceDay(r.as_of) + "." };
 }
 
+function daysBetween(a, b) { return Math.round((new Date(b + "T12:00:00Z") - new Date(a + "T12:00:00Z")) / 86400000); }
+function lastSession() {                       // the most recent weekday before today
+  const d = new Date(nyDate() + "T12:00:00Z"); do { d.setUTCDate(d.getUTCDate() - 1); } while ([0, 6].includes(d.getUTCDay()));
+  return d.toISOString().slice(0, 10);
+}
+function alarms() {
+  const out = [], st = state.rh, acct = state.account, today = nyDate();
+  if (st && st.ok === false) out.push('<div class="note bad"><b>Robinhood is disconnected since ' + esc(st.since || "recently") + ".</b> " + esc(st.error || "") + " Until then nothing is bought, sold or logged: sell anything that is due by hand in the Robinhood app.</div>");
+  else if (st && st.login_expires) {
+    const left = daysBetween(today, st.login_expires.slice(0, 10));
+    if (left <= 3) out.push('<div class="note warn"><b>The Robinhood login runs out ' + (left <= 0 ? "today" : "in " + plural(left, "day")) + "</b> (" + esc(st.login_expires) + "). Renew it before then: on your PC, in the dip-trader folder, run <code>python login.py</code> and push the vault.</div>");
+  }
+  if (acct && acct.as_of && acct.as_of.slice(0, 10) < lastSession() && !(st && st.ok === false))
+    out.push('<div class="note warn"><b>Account data is from ' + esc(niceDay(acct.as_of.slice(0, 10))) + ".</b> The Robinhood sync has not run since. Press Sync on the Positions page.</div>");
+  const due = overdue(), late = nyClock().mins >= 660;
+  if (due.length) out.push('<div class="note ' + (late ? "bad" : "warn") + '"><b>' + (late ? "Overdue to sell: " : "Due to sell today: ") + esc(due.map((d) => d.sym).join(", ")) + ".</b> Held " + due[0].held + " sessions or more, and the rule sells after 5. "
+    + (late ? "No sell has been logged today. Press Run the autopilot now (it sells until 3:30pm ET), or sell in the Robinhood app." : "The autopilot sells at its morning run.") + "</div>");
+  return out.join("");
+}
+function overdue() {                           // open journal trades held past the time stop, by the calendar
+  const today = nyDate();
+  return (state.trades || []).filter((t) => !t.exit_date && !t.paper).map((t) => {
+    let n = 0; const d = new Date(t.entry_date + "T12:00:00Z"), end = new Date(today + "T12:00:00Z");
+    for (; d < end; d.setUTCDate(d.getUTCDate() + 1)) if (![0, 6].includes(d.getUTCDay())) n++;   // completed weekday sessions, the entry day included
+    return { sym: t.sym, held: n };
+  }).filter((x) => x.held >= 5);
+}
 function renderHero() {
   const s = situation(), r = state.screen;
   const status = r ? ({ final: ["good", "Final list"], preliminary: ["warn", "Preview, not final"], "after close": ["", "Taken after the close"], closed: ["", "Last session's data"] }[r.status] || ["", r.status]) : null;
@@ -736,7 +763,7 @@ function renderToday() {
   const holding = r.holding.length ? '<p class="sub">Still holding ' + r.holding.map((h) => '<span class="sym">' + esc(h.sym) + "</span> (day " + h.day + " of 5)").join(", ") + ".</p>" : "";
   const unknown = r.unknown_holdings.length ? '<div class="note warn">Not covered by the screen, check by hand: ' + esc(r.unknown_holdings.join(", ")) + "</div>" : "";
 
-  body.innerHTML = autopilotSection()
+  body.innerHTML = alarms() + autopilotSection()
     + '<section class="stack"><div class="sec-head"><h2>' + (fresh ? "Sell at tomorrow's open" : "Sell at the open") + '</h2><span class="count ' + (r.sells.length ? "on" : "") + '">' + r.sells.length + "</span></div>" + sells + holding + unknown + "</section>"
     + '<section class="stack"><div class="sec-head"><h2>Buy before the close</h2><span class="count ' + (r.buys.length ? "on" : "") + '">' + r.buys.length + ((r.extra_buys || []).length ? " + " + r.extra_buys.length + " more" : "") + ((r.low_buys || []).length ? " · " + r.low_buys.length + " low score" : "") + "</span>"
     + '<div class="tools spacer" id="boardTools"' + (r.buys.length + (r.extra_buys || []).length + (r.low_buys || []).length > 1 ? "" : " hidden") + '><label class="check" style="font-size:13px"><input type="checkbox" id="boardHigh"> High confidence only</label>'
@@ -1044,7 +1071,7 @@ function autopilotSection() {
     + '<span class="spacer"></span>' + (on && canTrade() ? '<button class="small" id="autoNow">Run the autopilot now</button>' : "") + '<button class="small" id="autoToggle">' + (on ? "Turn off" : "Turn on") + "</button></div>"
     + (on ? "" : '<p class="sub">Switched off: nothing is placed by itself. Turn it on here or under Account and trade size.</p>')
     + (missed ? '<div class="note warn">No afternoon run reached today\u2019s window, so nothing was bought today. GitHub\u2019s timers sometimes arrive late; the sells still run in the morning.</div>' : "")
-    + (on && !missed && c.weekday && ((c.mins >= 600 && c.mins < 660 && !log.some((e) => e.date === today && e.mode === "sell")) || (c.mins >= 940 && c.mins < 958 && !log.some((e) => e.date === today && e.mode === "buy"))) ? '<div class="note warn">The timer has not run yet in this window. Press <b>Run the autopilot now</b> and it does its check within about a minute.</div>' : "")
+    + (on && !missed && c.weekday && ((c.mins >= 600 && c.mins < 930 && !log.some((e) => e.date === today && e.mode === "sell")) || (c.mins >= 940 && c.mins < 958 && !log.some((e) => e.date === today && e.mode === "buy"))) ? '<div class="note warn">The timer has not run yet in this window. Press <b>Run the autopilot now</b> and it does its check within about a minute.</div>' : "")
     + (log.length ? '<div class="scrollbox fade"><div class="stack">' + log.slice(0, 10).map(autoLine).join("") + "</div></div>" : '<p class="sub muted">Nothing yet. The first run is the next trading window.</p>') + "</section>";
 }
 async function toggleAuto() {
