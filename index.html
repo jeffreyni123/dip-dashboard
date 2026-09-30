@@ -1251,9 +1251,9 @@ const gx = (function () {
   /* ---- today ---- */
   const regimePill = (r) => r === "positive" ? '<span class="pill good">positive gamma</span>' : '<span class="pill bad">negative gamma</span>';
   function whenText(L) {
-    if (L.when === "pre-open") return "Levels for today, from last night's open interest and this morning's price.";
-    if (L.when === "session") return "Levels for today, refreshed during the session at " + L.run_at.slice(11) + " ET.";
-    return "Preliminary levels for " + niceDay(L.as_of) + " from tonight's close. They are refreshed at about 9:05am ET.";
+    if (L.when === "pre-open") return "Today's levels, ready before the open.";
+    if (L.when === "session") return "Today's levels, updated " + L.run_at.slice(11) + " ET.";
+    return "First look at " + niceDay(L.as_of) + ". Final levels arrive in the morning.";
   }
   const runRow = () => (LOCAL || !cfg.token) ? "" : '<div class="row"><span class="sub muted">The cloud job runs at about 9:05am and 4:35pm ET, separately from the screener.</span><button class="small spacer" id="gxRun">Run now</button></div>';
   function vToday() {
@@ -1262,9 +1262,9 @@ const gx = (function () {
     const S = L.symbols.SPY, X = L.symbols.SPX, Q = L.symbols.QQQ, lead = S || X || Q;
     let tone = "warn", say, facts = [];
     if (S && X && S.regime === X.regime) {
-      if (S.regime === "positive") { tone = "good"; say = "Range day. Dealers are long gamma: dips to the put wall are buys, rallies into the call wall are where to take profit. Do not chase."; }
-      else { tone = "bad"; say = "Trend day. Dealers are short gamma: do not fade moves. Trade the flip: a reclaim is long, a loss is short, with a tight stop and smaller size."; }
-    } else if (S && X) say = "Mixed. SPY options say " + S.regime + " gamma, SPX options say " + X.regime + ". Treat it as a range day, but with the stop at the flip rather than beyond the wall.";
+      if (S.regime === "positive") { tone = "good"; say = "Calm day. Buy dips at the put wall, take profit at the call wall. Don't chase."; }
+      else { tone = "bad"; say = "Wild day. Don't buy dips. Go long only after price gets back above the flip, and trade smaller."; }
+    } else if (S && X) { const w = (o) => o.regime === "positive" ? "calm" : "wild"; say = "Mixed signals: SPY says " + w(S) + " day, SPX says " + w(X) + " day. Play it as a calm day, but put the stop at the flip."; }
     else { say = lead.read; tone = lead.regime === "positive" ? "good" : "bad"; }
     if (S) facts = [["SPY", lvl(S.spot)], ["flip", lvl(S.flip) + (S.dist_to_flip_pct != null ? " (" + pc(S.dist_to_flip_pct, 1) + ")" : "")], ["put wall", lvl(S.put_wall)], ["call wall", lvl(S.call_wall)], ["expected move", S.exp_move_pct != null ? "±" + S.exp_move_pct.toFixed(1) + "%" : "–"]];
     body.innerHTML =
@@ -1292,18 +1292,19 @@ const gx = (function () {
   }
   function howTo(o) {
     if (!o) return "";
+    const key = '<p class="sub"><b>Put wall</b> = the floor, where buying usually shows up. <b>Call wall</b> = the ceiling, where rallies usually stall. <b>Flip</b> = the line between a calm day (above it) and a wild day (below it).</p>';
     const rules = o.regime === "positive" ? [
-      "Dips toward the put wall at <b>" + lvl(o.put_wall) + "</b> are the buy. Stop about 0.4% below it. Target the previous close, then the call wall.",
-      "Rallies into the call wall at <b>" + lvl(o.call_wall) + "</b> are where to take profit, sell calls, or open a short via a call credit spread.",
-      "Losing the flip at <b>" + lvl(o.flip) + "</b> ends the range-day plan: stop fading and switch to the trend rules.",
-      "Dip trades are in their friendliest regime today: dealers buy dips too.",
+      "<b>Buy</b> near the put wall at <b>" + lvl(o.put_wall) + "</b>. Stop just below it.",
+      "<b>Sell</b> at the call wall at <b>" + lvl(o.call_wall) + "</b>. That is where the move usually stops.",
+      "If price falls below the flip at <b>" + lvl(o.flip) + "</b>, stop buying dips. The day has turned.",
+      "Good day for the dip trades.",
     ] : [
-      "Do not buy the first dip. Below the flip at <b>" + lvl(o.flip) + "</b> dealers sell into weakness, so moves extend.",
-      "A 5-minute close back above the flip is the long signal, stop 0.3% below it, target the call wall at <b>" + lvl(o.call_wall) + "</b>.",
-      "A break of the put wall at <b>" + lvl(o.put_wall) + "</b> is where selling accelerates: no knife-catching there.",
-      "Halve the size on anything, including the dip trades. Expect the expected move to be exceeded.",
+      "<b>Don't buy the first dip.</b> Price can keep falling.",
+      "<b>Go long</b> only after price gets back above the flip at <b>" + lvl(o.flip) + "</b>. Stop just below it. Target the call wall at <b>" + lvl(o.call_wall) + "</b>.",
+      "If price breaks the put wall at <b>" + lvl(o.put_wall) + "</b>, expect faster selling. Don't catch it.",
+      "Trade half size today, dip trades included.",
     ];
-    return '<ul class="rules">' + rules.map((r) => "<li>" + r + "</li>").join("") + "</ul>";
+    return key + '<ul class="rules">' + rules.map((r) => "<li>" + r + "</li>").join("") + "</ul>";
   }
   async function runNow() {
     const btn = $("gxRun"); if (!btn) return; btn.disabled = true; btn.textContent = "Starting…";
