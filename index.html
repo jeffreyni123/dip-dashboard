@@ -381,6 +381,7 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
           <label>Most spreads open at once <input id="acctSpreads" type="number" step="1" min="0" max="9" inputmode="numeric"></label>
         </div>
         <label class="check"><input type="checkbox" id="acctAuto"> <b>Autopilot</b>: place the stock trades for me (buys near the close, sells at the open)</label>
+        <label class="check"><input type="checkbox" id="acctNews"> <b>Skip bad news</b>: the autopilot leaves out picks whose headlines read badly or carry a red flag (downgrade, guidance cut, investigation)</label>
         <p class="sub">The screener sizes each buy from the account value. Set a smaller amount per trade if you want to
           start below the plan, for example $10 to $20.</p>
         <div class="row"><button type="submit">Save</button></div>
@@ -822,6 +823,7 @@ function renderBoard() {
       : (b.confidence == null ? "" : "None of the " + (b.confidence_max || 6) + " confidence checks is met. Picks like this had almost no edge in testing."))
     + (b.kind === "momentum" ? " " + info("A momentum dip: a strong stock (top fifth of the S&P over 6 months) having a bad couple of days. Scored on its own 0-4 scale.") : "")
     + (b.low ? ' <span class="muted">The plan skips it.</span> ' + info("Shown so you can see every pick. In testing, skipping scores of 0-1 made more (24% and 31% a year against 20% and 22%) with fewer trades. The Buy button still works if you want it.") : "")
+    + (b.room && state.settings.skip_bad_news && b.news_ok === false ? ' <span class="muted" style="color:var(--bad)">The autopilot skips it: bad news.</span>' : "")
     + (b.room ? "" : ' <span class="muted">Past the daily cap.</span> ' + info("The plan caps new buys at " + (r.room != null ? r.room : 5) + " today; this one qualified but is past the cap, so the autopilot will not buy it.")) + "</div>"
     + newsBlock(b.news)
     + '<div class="acts">' + (canTrade() && fresh
@@ -1015,7 +1017,7 @@ function renderPositions() {
   if (!$("buyDate").value) $("buyDate").value = nyDate();
   if (!$("sellDate").value) $("sellDate").value = nyDate();
   if (!$("buyDollars").value) $("buyDollars").value = state.settings.default_dollars || 67;
-  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? ""; $("acctSpreads").value = state.settings.max_spreads ?? 3; $("acctAuto").checked = !!state.settings.autopilot;
+  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? ""; $("acctSpreads").value = state.settings.max_spreads ?? 3; $("acctAuto").checked = !!state.settings.autopilot; $("acctNews").checked = !!state.settings.skip_bad_news;
 }
 async function syncNow() {
   const b = $("syncNow"); b.disabled = true; b.textContent = "Syncing…";
@@ -1057,7 +1059,7 @@ function autoLine(e) {
     if (o.ok === false) return "did not " + o.side + " " + esc(o.symbol) + ": " + esc(o.reason || "refused");
     return o.side + " " + esc(o.symbol) + " is " + esc(o.state || "pending");
   });
-  const kept = (e.kept || []).length ? " Holding " + e.kept.map((k) => esc(k.sym) + " (" + esc(k.why) + ")").join(", ") + "." : "";
+  const kept = (e.kept || []).length ? (e.mode === "buy" ? " Skipped " : " Holding ") + e.kept.map((k) => esc(k.sym) + " (" + esc(k.why) + ")").join(", ") + "." : "";
   const tone = { placed: "good", refused: "bad", error: "bad", skipped: "warn", off: "", nothing: "" }[e.action] || "";
   const text = e.action === "placed" ? fills.join("; ") + "." : esc(e.note || e.action) + (fills.length ? " " + fills.join("; ") + "." : "");
   return '<div class="card"><div class="top"><div class="name"><span class="sym">' + when + '</span></div><span class="pill ' + tone + '">' + esc({ placed: "Traded", refused: "Refused", error: "Error", skipped: "Skipped", off: "Off", nothing: "Nothing to do" }[e.action] || e.action) + "</span></div>"
@@ -1066,7 +1068,7 @@ function autoLine(e) {
 function autopilotSection() {
   const on = autoOn(), log = (state.autopilot || []).slice().reverse(), c = nyClock(), today = nyDate();
   const missed = on && c.weekday && c.mins > 960 && state.screen && state.screen.as_of === today && !log.some((e) => e.date === today && e.mode === "buy");
-  return '<section class="stack"><div class="sec-head"><h2>Autopilot</h2>' + info("Buys the plan picks from the final list at about 3:40-3:55pm ET, and sells at the open on the day the exit rule fires (RSI(2) above 70 at the close, or five sessions held). Same guardrails as the Buy button: S&P 500 only, $200 at most per order, never doubles up, market hours only. Spreads stay manual.")
+  return '<section class="stack"><div class="sec-head"><h2>Autopilot</h2>' + info("Buys the plan picks from the final list at about 3:40-3:55pm ET, and sells at the open on the day the exit rule fires (RSI(2) above 70 at the close, or five sessions held). Same guardrails as the Buy button: S&P 500 only, $200 at most per order, never doubles up, market hours only. Spreads stay manual." + (state.settings.skip_bad_news ? " Skip bad news is on: picks whose headlines read badly, or that carry a red flag, are left out." : ""))
     + '<span class="pill ' + (on ? "good" : "warn") + '">' + (on ? "On" : "Off") + '</span>'
     + '<span class="spacer"></span>' + (on && canTrade() ? '<button class="small" id="autoNow">Run the autopilot now</button>' : "") + '<button class="small" id="autoToggle">' + (on ? "Turn off" : "Turn on") + "</button></div>"
     + (on ? "" : '<p class="sub">Switched off: nothing is placed by itself. Turn it on here or under Account and trade size.</p>')
@@ -1499,7 +1501,7 @@ $("disconnectBtn").addEventListener("click", () => { cfg = {}; try { localStorag
 $("buyForm").addEventListener("submit", submitBuy);
 $("sellForm").addEventListener("submit", submitSell);
 $("acctForm").addEventListener("submit", async (ev) => { ev.preventDefault();
-  const next = { ...state.settings, account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null, max_spreads: +$("acctSpreads").value || 3, autopilot: $("acctAuto").checked };
+  const next = { ...state.settings, account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null, max_spreads: +$("acctSpreads").value || 3, autopilot: $("acctAuto").checked, skip_bad_news: $("acctNews").checked };
   try { const cur = await getJSON("data/settings.json", {}); state.settingsSha = await putJSON("data/settings.json", next, cur.sha, "settings"); state.settings = next; renderToday(); toast("Saved. The next screener run uses it." + (next.autopilot ? " Autopilot is on." : " Autopilot is off.")); }
   catch (e) { toast(e.message); } });
 document.addEventListener("click", (ev) => {
