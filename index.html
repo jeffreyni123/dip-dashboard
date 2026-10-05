@@ -273,7 +273,7 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
 .gx-chart .wall.call { stroke: var(--gx-pos); stroke-width: 1.5; stroke-dasharray: 2 3; }
 .gx-chart .wall.put { stroke: var(--gx-neg); stroke-width: 1.5; stroke-dasharray: 2 3; }
 .gx-chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; }
-.gx-chart .line.pos { stroke: var(--gx-pos); } .gx-chart .line.neg { stroke: var(--gx-neg); }
+.gx-chart .line.pos { stroke: var(--gx-pos); } .gx-chart .line.neg { stroke: var(--gx-neg); } .gx-chart .line.acc { stroke: var(--accent); } .gx-chart .line.mut { stroke: var(--muted); }
 .gx-item { border: 1px solid var(--hair); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; font-size: 14px; }
 .gx-item .k { font-weight: 600; } .gx-item .tag { font-size: 12px; color: var(--muted); }
 #gxTip { position: fixed; z-index: 9; pointer-events: none; background: var(--ink); color: var(--ground); font: 12px/1.4 var(--sans); padding: 6px 9px; border-radius: 6px; white-space: nowrap; }
@@ -1432,7 +1432,7 @@ const gx = (function () {
         + zd(s)
         + '<p class="sub muted">A wall "held" when price reached it and closed back on the inside. Negative-gamma days should show the bigger range and more days beyond the expected move; if they do not, the regime label is noise.</p></div>').join("")
       + '<div class="panel stack"><h3>Paper rules</h3><div class="scroll"><table><thead><tr><th>Rule</th><th class="num">Trades</th><th class="num">Win</th><th class="num">Avg</th><th class="num">Total</th><th class="num">Target / stop / close</th></tr></thead><tbody>'
-      + ruleRow("R1", "R1 Wall fade (positive days)") + ruleRow("R2", "R2 Flip trend (negative days)") + "</tbody></table></div>"
+      + ruleRow("R1", "R1 Wall fade (positive days)") + ruleRow("R2", "R2 Flip trend (negative days)") + ruleRow("R3", "R3 Fade the 0DTE walls (any day)") + ruleRow("R4", "R4 Open outside 0DTE walls, fade back") + "</tbody></table></div>"
       + curve(R) + '<p class="sub muted">Each rule starts at $1,000, one position at a time, 0.02% slippage each way. Shorts are the level\'s edge; on Robinhood they would be an inverse fund or a call credit spread.</p></div>'
       + '<div class="panel stack"><div class="sec-head"><h3>Recent days</h3><span class="count">' + recent.length + '</span></div><div class="scroll" style="max-height:50vh;overflow-y:auto"><table><thead><tr><th>Day</th><th>Sym</th><th>Regime</th><th class="num">Flip</th><th class="num">Put wall</th><th class="num">Call wall</th><th class="num">Close</th><th class="num">Move</th><th class="num">Range</th><th>Put wall</th><th>Call wall</th></tr></thead><tbody>'
       + recent.map((h) => "<tr><td>" + niceDay(h.date) + "</td><td>" + h.sym + "</td><td>" + (h.regime === "positive" ? '<span class="up">+</span>' : '<span class="down">−</span>') + '</td><td class="num">' + lvl(h.flip) + '</td><td class="num">' + lvl(h.put_wall) + '</td><td class="num">' + lvl(h.call_wall) + '</td><td class="num">' + lvl(h.outcome.close) + '</td><td class="num ' + cl(h.outcome.ret_pct) + '">' + pc(h.outcome.ret_pct) + '</td><td class="num">' + nm(h.outcome.range_pct, 2) + "%</td><td>" + yn(h.outcome.put_wall) + "</td><td>" + yn(h.outcome.call_wall) + "</td></tr>").join("")
@@ -1441,7 +1441,7 @@ const gx = (function () {
         + G.trades.slice().reverse().map((t) => "<tr><td>" + niceDay(t.date) + "</td><td>" + t.sym + "</td><td>" + t.rule + "</td><td>" + t.side + "</td><td>" + t.level + " " + t.time + '</td><td class="num">' + lvl(t.entry) + '</td><td class="num">' + lvl(t.exit) + "</td><td>" + t.reason + '</td><td class="num ' + cl(t.pct) + '">' + pc(t.pct, 2) + "</td></tr>").join("") + "</tbody></table></div></div>" : "");
   }
   function curve(R) {
-    const series = [["R1", "pos", (R.R1 || {}).curve || []], ["R2", "neg", (R.R2 || {}).curve || []]].filter((s) => s[2].length > 1);
+    const series = [["R1", "pos", (R.R1 || {}).curve || []], ["R2", "neg", (R.R2 || {}).curve || []], ["R3", "acc", (R.R3 || {}).curve || []], ["R4", "mut", (R.R4 || {}).curve || []]].filter((s) => s[2].length > 1);
     if (!series.length) return "";
     const W = 860, H = 200, L = 44, Rr = 8, T = 12, B = 24, w = W - L - Rr, h = H - T - B;
     const all = series.flatMap((s) => s[2].map((p) => p[1])), lo = Math.min(1000, ...all), hi = Math.max(1000, ...all);
@@ -1451,7 +1451,7 @@ const gx = (function () {
     ticks(lo, hi, 4).forEach((t) => { s += '<line class="grid" x1="' + L + '" x2="' + (W - Rr) + '" y1="' + Y(t) + '" y2="' + Y(t) + '"/><text x="' + (L - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end">$' + Math.round(t) + "</text>"; });
     series.forEach(([k, c, pts]) => { s += '<path class="line ' + c + '" d="' + [[null, 1000]].concat(pts).map((p, i) => (i ? "L" : "M") + X(i, pts.length + 1) + " " + Y(p[1])).join(" ") + '"/><text class="lbl" x="' + (W - Rr) + '" y="' + (Y(pts[pts.length - 1][1]) - 4) + '" text-anchor="end">' + k + "</text>"; });
     s += '<text x="' + L + '" y="' + (H - 6) + '">first trade</text><text x="' + (W - Rr) + '" y="' + (H - 6) + '" text-anchor="end">latest (' + n + " trades)</text>";
-    return s + '</svg></div><div class="legend gx-legend"><span><i style="background:var(--gx-pos)"></i>R1 wall fade</span><span><i style="background:var(--gx-neg)"></i>R2 flip trend</span></div>';
+    return s + '</svg></div><div class="legend gx-legend"><span><i style="background:var(--gx-pos)"></i>R1 wall fade</span><span><i style="background:var(--gx-neg)"></i>R2 flip trend</span><span><i style="background:var(--accent)"></i>R3 fade 0DTE walls</span><span><i style="background:var(--muted)"></i>R4 gap fade</span></div>';
   }
 
   /* ---- playbook & studies ---- */
