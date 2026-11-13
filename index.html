@@ -771,7 +771,7 @@ function renderToday() {
     + '<label style="display:flex;gap:6px;align-items:center;font-size:13px">Sort <select id="boardSort"><option value="confidence">Confidence</option><option value="rank">Strategy rank</option><option value="drop">Biggest drop</option></select></label></div></div>'
     + (fresh ? "" : '<div class="note warn">These were for the close on ' + esc(niceDay(r.as_of)) + ". They are no longer valid.</div>")
     + '<div class="scrollbox fade"><div id="board" class="stack"></div></div>'
-    + (r.skipped_earnings.length ? '<p class="sub">Skipped because they just reported earnings: ' + esc(r.skipped_earnings.join(", ")) + ".</p>" : "") + "</section>"
+    + (r.skipped_earnings.length ? '<p class="sub">Skipped because of an earnings report, just out or due within 2 sessions: ' + esc(r.skipped_earnings.join(", ")) + ".</p>" : "") + "</section>"
     + spreadSection(r.spread)
     + outlookSection(r.spy_outlook)
     + '<section class="stack"><h2>The market today</h2><div class="card"><div class="top"><div class="name"><span class="sym">' + esc(r.regime.replace(" + ", " · ").toUpperCase()) + "</span></div>"
