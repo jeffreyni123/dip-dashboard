@@ -381,6 +381,7 @@ button.sell { background: var(--warn); border-color: var(--warn); color: var(--s
           <label>Most spreads open at once <input id="acctSpreads" type="number" step="1" min="0" max="9" inputmode="numeric"></label>
         </div>
         <label class="check"><input type="checkbox" id="acctAuto"> <b>Autopilot</b>: place the stock trades for me (buys near the close, sells at the open)</label>
+        <label class="check"><input type="checkbox" id="acctPark"> <b>Park idle cash in the S&amp;P fund</b>: each afternoon the autopilot moves spare cash into IVV and sells only what the day's buys need, keeping $15 in cash. This is what the backtest assumes; it added 3 to 9 points a year, with slightly deeper drops</label>
         <label class="check"><input type="checkbox" id="acctNews"> <b>Skip bad news</b>: the autopilot leaves out picks whose headlines read badly or carry a red flag (downgrade, guidance cut, investigation)</label>
         <p class="sub">The screener sizes each buy from the account value. Set a smaller amount per trade if you want to
           start below the plan, for example $10 to $20.</p>
@@ -1017,7 +1018,7 @@ function renderPositions() {
   if (!$("buyDate").value) $("buyDate").value = nyDate();
   if (!$("sellDate").value) $("sellDate").value = nyDate();
   if (!$("buyDollars").value) $("buyDollars").value = state.settings.default_dollars || 67;
-  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? ""; $("acctSpreads").value = state.settings.max_spreads ?? 3; $("acctAuto").checked = !!state.settings.autopilot; $("acctNews").checked = !!state.settings.skip_bad_news;
+  $("acctValue").value = state.settings.account ?? 1000; $("acctDollars").value = state.settings.default_dollars ?? ""; $("acctSpreads").value = state.settings.max_spreads ?? 3; $("acctAuto").checked = !!state.settings.autopilot; $("acctNews").checked = !!state.settings.skip_bad_news; $("acctPark").checked = !!state.settings.park_idle;
 }
 async function syncNow() {
   const b = $("syncNow"); b.disabled = true; b.textContent = "Syncing…";
@@ -1501,7 +1502,7 @@ $("disconnectBtn").addEventListener("click", () => { cfg = {}; try { localStorag
 $("buyForm").addEventListener("submit", submitBuy);
 $("sellForm").addEventListener("submit", submitSell);
 $("acctForm").addEventListener("submit", async (ev) => { ev.preventDefault();
-  const next = { ...state.settings, account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null, max_spreads: +$("acctSpreads").value || 3, autopilot: $("acctAuto").checked, skip_bad_news: $("acctNews").checked };
+  const next = { ...state.settings, account: +$("acctValue").value, default_dollars: +$("acctDollars").value || null, max_spreads: +$("acctSpreads").value || 3, autopilot: $("acctAuto").checked, skip_bad_news: $("acctNews").checked, park_idle: $("acctPark").checked };
   try { const cur = await getJSON("data/settings.json", {}); state.settingsSha = await putJSON("data/settings.json", next, cur.sha, "settings"); state.settings = next; renderToday(); toast("Saved. The next screener run uses it." + (next.autopilot ? " Autopilot is on." : " Autopilot is off.")); }
   catch (e) { toast(e.message); } });
 document.addEventListener("click", (ev) => {
